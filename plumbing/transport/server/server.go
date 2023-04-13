@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/go-git/go-git/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/packfile"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
@@ -19,6 +20,8 @@ import (
 )
 
 var DefaultServer = NewServer(DefaultLoader)
+
+var _ transport.Transport = (*server)(nil)
 
 type server struct {
 	loader  Loader
@@ -61,6 +64,15 @@ func (s *server) NewReceivePackSession(ep *transport.Endpoint, auth transport.Au
 	return s.handler.NewReceivePackSession(sto)
 }
 
+func (s *server) NewUploadArchiveSession(ep *transport.Endpoint, auth transport.AuthMethod) (transport.UploadArchiveSession, error) {
+	sto, err := s.loader.Load(ep)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.handler.NewUploadArchiveSession(sto)
+}
+
 type handler struct {
 	asClient bool
 }
@@ -75,6 +87,12 @@ func (h *handler) NewReceivePackSession(s storer.Storer) (transport.ReceivePackS
 	return &rpSession{
 		session:   session{storer: s, asClient: h.asClient},
 		cmdStatus: map[plumbing.ReferenceName]error{},
+	}, nil
+}
+
+func (h *handler) NewUploadArchiveSession(s storer.Storer) (transport.UploadArchiveSession, error) {
+	return &uaSession{
+		session: session{storer: s, asClient: h.asClient},
 	}, nil
 }
 
@@ -102,6 +120,8 @@ func (s *session) checkSupportedCapabilities(cl *capability.List) error {
 
 	return nil
 }
+
+var _ transport.UploadPackSession = (*upSession)(nil)
 
 type upSession struct {
 	session
@@ -199,6 +219,8 @@ func (*upSession) setSupportedCapabilities(c *capability.List) error {
 
 	return nil
 }
+
+var _ transport.ReceivePackSession = (*rpSession)(nil)
 
 type rpSession struct {
 	session
@@ -368,6 +390,21 @@ func (*rpSession) setSupportedCapabilities(c *capability.List) error {
 	}
 
 	return c.Set(capability.ReportStatus)
+}
+
+var _ transport.UploadArchiveSession = (*uaSession)(nil)
+
+type uaSession struct {
+	session
+}
+
+func (*uaSession) UploadArchive(ctx context.Context, req *packp.UploadArchiveRequest) (*packp.UploadArchiveResponse, error) {
+	var tree *object.Tree
+	if !req.Hash.IsZero() {
+
+	} else {
+
+	}
 }
 
 func setHEAD(s storer.Storer, ar *packp.AdvRefs) error {

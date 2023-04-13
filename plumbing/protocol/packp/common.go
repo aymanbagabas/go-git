@@ -42,6 +42,9 @@ var (
 
 	// updreq
 	shallowNoSp = []byte("shallow")
+
+	// upload-archive
+	argument = []byte("argument ")
 )
 
 func isFlush(payload []byte) bool {

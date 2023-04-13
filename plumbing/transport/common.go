@@ -39,8 +39,9 @@ var (
 )
 
 const (
-	UploadPackServiceName  = "git-upload-pack"
-	ReceivePackServiceName = "git-receive-pack"
+	UploadPackServiceName    = "git-upload-pack"
+	ReceivePackServiceName   = "git-receive-pack"
+	UploadArchiveServiceName = "git-upload-archive"
 )
 
 // Transport can initiate git-upload-pack and git-receive-pack processes.
@@ -50,6 +51,8 @@ type Transport interface {
 	NewUploadPackSession(*Endpoint, AuthMethod) (UploadPackSession, error)
 	// NewReceivePackSession starts a git-receive-pack session for an endpoint.
 	NewReceivePackSession(*Endpoint, AuthMethod) (ReceivePackSession, error)
+	// NewUploadArchiveSession starts a git-upload-archive session for an endpoint.
+	NewUploadArchiveSession(*Endpoint, AuthMethod) (UploadArchiveSession, error)
 }
 
 type Session interface {
@@ -95,6 +98,18 @@ type ReceivePackSession interface {
 	// git-send-pack, although here the same interface is used to make it
 	// RPC-like.
 	ReceivePack(context.Context, *packp.ReferenceUpdateRequest) (*packp.ReportStatus, error)
+}
+
+// UploadArchiveSession represents a git-upload-archive session.
+// A git-upload-archive session has two steps: reference discovery
+// (AdvertisedReferences) and uploading archive (UploadArchive).
+type UploadArchiveSession interface {
+	// UploadArchive takes a git-upload-archive request and returns a response,
+	// including a archive. Don't be confused by terminology, the client
+	// side of a git-upload-archive is called git-archive, although here
+	// the same interface is used to make it RPC-like.
+	// The archive format is specified by the request.
+	UploadArchive(context.Context, *packp.UploadArchiveRequest) (*packp.UploadArchiveResponse, error)
 }
 
 // Endpoint represents a Git URL in any supported protocol.

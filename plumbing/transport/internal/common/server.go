@@ -71,3 +71,23 @@ func ServeReceivePack(cmd ServerCommand, s transport.ReceivePackSession) error {
 
 	return nil
 }
+
+func ServeUploadArchive(cmd ServerCommand, s transport.UploadArchiveSession) error {
+	req := packp.NewUploadArchiveRequest()
+	if err := req.Decode(cmd.Stdin); err != nil {
+		return fmt.Errorf("error decoding: %s", err)
+	}
+
+	rs, err := s.UploadArchive(context.TODO(), req)
+	if rs != nil {
+		if err := rs.Encode(cmd.Stdout); err != nil {
+			return fmt.Errorf("error in encoding report status %s", err)
+		}
+	}
+
+	if err != nil {
+		return fmt.Errorf("error in receive pack: %s", err)
+	}
+
+	return nil
+}

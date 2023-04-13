@@ -19,19 +19,22 @@ import (
 var DefaultClient = NewClient(
 	transport.UploadPackServiceName,
 	transport.ReceivePackServiceName,
+	transport.UploadArchiveServiceName,
 )
 
 type runner struct {
-	UploadPackBin  string
-	ReceivePackBin string
+	UploadPackBin    string
+	ReceivePackBin   string
+	UploadArchiveBin string
 }
 
 // NewClient returns a new local client using the given git-upload-pack and
 // git-receive-pack binaries.
-func NewClient(uploadPackBin, receivePackBin string) transport.Transport {
+func NewClient(uploadPackBin, receivePackBin, uploadArchiveBin string) transport.Transport {
 	return common.NewClient(&runner{
-		UploadPackBin:  uploadPackBin,
-		ReceivePackBin: receivePackBin,
+		UploadPackBin:    uploadPackBin,
+		ReceivePackBin:   receivePackBin,
+		UploadArchiveBin: uploadArchiveBin,
 	})
 }
 
@@ -82,6 +85,8 @@ func (r *runner) Command(cmd string, ep *transport.Endpoint, auth transport.Auth
 		cmd = r.UploadPackBin
 	case transport.ReceivePackServiceName:
 		cmd = r.ReceivePackBin
+	case transport.UploadArchiveServiceName:
+		cmd = r.UploadArchiveBin
 	}
 
 	_, err := execabs.LookPath(cmd)

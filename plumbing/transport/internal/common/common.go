@@ -96,6 +96,19 @@ func (c *client) NewReceivePackSession(ep *transport.Endpoint, auth transport.Au
 	return c.newSession(transport.ReceivePackServiceName, ep, auth)
 }
 
+// NewUploadArchiveSession creates a new UploadArchiveSession.
+func (c *client) NewUploadArchiveSession(ep *transport.Endpoint, auth transport.AuthMethod) (
+	transport.UploadArchiveSession, error) {
+
+	return c.newSession(transport.UploadArchiveServiceName, ep, auth)
+}
+
+var _ transport.UploadPackSession = (*session)(nil)
+
+var _ transport.ReceivePackSession = (*session)(nil)
+
+var _ transport.UploadArchiveSession = (*session)(nil)
+
 type session struct {
 	Stdin   io.WriteCloser
 	Stdout  io.Reader
@@ -339,6 +352,13 @@ func (s *session) ReceivePack(ctx context.Context, req *packp.ReferenceUpdateReq
 	}
 
 	return report, s.Command.Close()
+}
+
+// UploadArchive handles the upload-archive request to the server.
+//
+// It implements transport.UploadArchiveSession.
+func (*session) UploadArchive(context.Context, *packp.UploadArchiveRequest) (*packp.UploadArchiveResponse, error) {
+	panic("unimplemented")
 }
 
 func (s *session) finish() error {

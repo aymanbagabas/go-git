@@ -46,6 +46,24 @@ func ServeReceivePack(path string) error {
 	return common.ServeReceivePack(srvCmd, s)
 }
 
+// ServeUploadArchive serves a git-upload-archive request using standard
+// output, input and error. This is meant to be used when implementing a
+// git-upload-archive.
+func ServeUploadArchive(path string) error {
+	ep, err := transport.NewEndpoint(path)
+	if err != nil {
+		return err
+	}
+
+	// TODO: define and implement a server-side AuthMethod
+	s, err := server.DefaultServer.NewUploadArchiveSession(ep, nil)
+	if err != nil {
+		return fmt.Errorf("error creating session: %s", err)
+	}
+
+	return common.ServeUploadArchive(srvCmd, s)
+}
+
 var srvCmd = common.ServerCommand{
 	Stdin:  os.Stdin,
 	Stdout: ioutil.WriteNopCloser(os.Stdout),
