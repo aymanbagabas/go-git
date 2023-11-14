@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/pktline"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -15,24 +14,7 @@ import (
 	"github.com/go-git/go-git/v5/utils/ioutil"
 )
 
-type upSession struct {
-	*session
-}
-
-func newUploadPackSession(c *client, ep *transport.Endpoint, auth transport.AuthMethod) (transport.UploadPackSession, error) {
-	s, err := newSession(c, ep, auth)
-	return &upSession{s}, err
-}
-
-func (s *upSession) AdvertisedReferences() (*packp.AdvRefs, error) {
-	return advertisedReferences(context.TODO(), s.session, transport.UploadPackServiceName)
-}
-
-func (s *upSession) AdvertisedReferencesContext(ctx context.Context) (*packp.AdvRefs, error) {
-	return advertisedReferences(ctx, s.session, transport.UploadPackServiceName)
-}
-
-func (s *upSession) UploadPack(
+func (s *session) Fetch(
 	ctx context.Context, req *packp.UploadPackRequest,
 ) (*packp.UploadPackResponse, error) {
 
@@ -70,40 +52,6 @@ func (s *upSession) UploadPack(
 
 	rc := ioutil.NewReadCloser(r, res.Body)
 	return common.DecodeUploadPackResponse(rc, req)
-}
-
-// Close does nothing.
-func (s *upSession) Close() error {
-	return nil
-}
-
-func (s *upSession) doRequest(
-	ctx context.Context, method, url string, content *bytes.Buffer,
-) (*http.Response, error) {
-
-	var body io.Reader
-	if content != nil {
-		body = content
-	}
-
-	req, err := http.NewRequest(method, url, body)
-	if err != nil {
-		return nil, plumbing.NewPermanentError(err)
-	}
-
-	applyHeadersToRequest(req, content, s.endpoint.Host, transport.UploadPackServiceName)
-	s.ApplyAuthToRequest(req)
-
-	res, err := s.client.Do(req.WithContext(ctx))
-	if err != nil {
-		return nil, plumbing.NewUnexpectedError(err)
-	}
-
-	if err := NewErr(res); err != nil {
-		return nil, err
-	}
-
-	return res, nil
 }
 
 func uploadPackRequestToReader(req *packp.UploadPackRequest) (*bytes.Buffer, error) {

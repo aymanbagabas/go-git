@@ -86,18 +86,14 @@ func NewClient(runner Commander) transport.Transport {
 	return &client{runner}
 }
 
-// NewUploadPackSession creates a new UploadPackSession.
-func (c *client) NewUploadPackSession(ep *transport.Endpoint, auth transport.AuthMethod) (
-	transport.UploadPackSession, error) {
+func (c *client) NewSession(s string, ep *transport.Endpoint, auth transport.AuthMethod) (transport.Session, error) {
+	switch s {
+	case transport.UploadPackServiceName, transport.ReceivePackServiceName:
+	default:
+		return nil, transport.ErrUnsupportedService
+	}
 
-	return c.newSession(transport.UploadPackServiceName, ep, auth)
-}
-
-// NewReceivePackSession creates a new ReceivePackSession.
-func (c *client) NewReceivePackSession(ep *transport.Endpoint, auth transport.AuthMethod) (
-	transport.ReceivePackSession, error) {
-
-	return c.newSession(transport.ReceivePackServiceName, ep, auth)
+	return c.newSession(s, ep, auth)
 }
 
 type session struct {
@@ -174,11 +170,11 @@ func (c *client) listenFirstError(r io.Reader) chan string {
 }
 
 func (s *session) AdvertisedReferences() (*packp.AdvRefs, error) {
-	return s.AdvertisedReferencesContext(context.TODO())
+	return s.DiscoverReferences(context.TODO(), s.isReceivePack, nil)
 }
 
 // AdvertisedReferences retrieves the advertised references from the server.
-func (s *session) AdvertisedReferencesContext(ctx context.Context) (*packp.AdvRefs, error) {
+func (s *session) DiscoverReferences(ctx context.Context, forPush bool, _ *transport.SessionOptions) (*packp.AdvRefs, error) {
 	if s.advRefs != nil {
 		return s.advRefs, nil
 	}
@@ -193,7 +189,7 @@ func (s *session) AdvertisedReferencesContext(ctx context.Context) (*packp.AdvRe
 	// Some servers like jGit, announce capabilities instead of returning an
 	// packp message with a flush. This verifies that we received a empty
 	// adv-refs, even it contains capabilities.
-	if !s.isReceivePack && ar.IsEmpty() {
+	if !forPush && ar.IsEmpty() {
 		return nil, transport.ErrEmptyRemoteRepository
 	}
 
@@ -241,9 +237,9 @@ func (s *session) handleAdvRefDecodeError(err error) error {
 	return err
 }
 
-// UploadPack performs a request to the server to fetch a packfile. A reader is
+// Fetch performs a request to the server to fetch a packfile. A reader is
 // returned with the packfile content. The reader must be closed after reading.
-func (s *session) UploadPack(ctx context.Context, req *packp.UploadPackRequest) (*packp.UploadPackResponse, error) {
+func (s *session) Fetch(ctx context.Context, req *packp.UploadPackRequest) (*packp.UploadPackResponse, error) {
 	if req.IsEmpty() {
 		return nil, transport.ErrEmptyUploadPackRequest
 	}
@@ -252,7 +248,7 @@ func (s *session) UploadPack(ctx context.Context, req *packp.UploadPackRequest) 
 		return nil, err
 	}
 
-	if _, err := s.AdvertisedReferencesContext(ctx); err != nil {
+	if _, err := s.DiscoverReferences(ctx, false, nil); err != nil {
 		return nil, err
 	}
 
@@ -304,7 +300,7 @@ func (s *session) onError(err error) {
 	_ = s.Close()
 }
 
-func (s *session) ReceivePack(ctx context.Context, req *packp.ReferenceUpdateRequest) (*packp.ReportStatus, error) {
+func (s *session) Push(ctx context.Context, req *packp.ReferenceUpdateRequest) (*packp.ReportStatus, error) {
 	if _, err := s.AdvertisedReferences(); err != nil {
 		return nil, err
 	}

@@ -34,9 +34,9 @@ func (s *UploadPackSuite) SetUpSuite(c *C) {
 
 // Overwritten, different behaviour for HTTP.
 func (s *UploadPackSuite) TestAdvertisedReferencesNotExists(c *C) {
-	r, err := s.Client.NewUploadPackSession(s.NonExistentEndpoint, s.EmptyAuth)
+	r, err := s.Client.NewSession(transport.UploadPackServiceName, s.NonExistentEndpoint, s.EmptyAuth)
 	c.Assert(err, IsNil)
-	info, err := r.AdvertisedReferences()
+	info, err := r.DiscoverReferences(context.TODO(), false, nil)
 	c.Assert(err, Equals, transport.ErrRepositoryNotFound)
 	c.Assert(info, IsNil)
 }
@@ -81,28 +81,28 @@ func (s *UploadPackSuite) newEndpoint(c *C, name string) *transport.Endpoint {
 func (s *UploadPackSuite) TestAdvertisedReferencesRedirectPath(c *C) {
 	endpoint, _ := transport.NewEndpoint("https://gitlab.com/gitlab-org/gitter/webapp")
 
-	session, err := s.Client.NewUploadPackSession(endpoint, s.EmptyAuth)
+	sess, err := s.Client.NewSession(transport.UploadPackServiceName, endpoint, s.EmptyAuth)
 	c.Assert(err, IsNil)
 
-	info, err := session.AdvertisedReferences()
+	info, err := sess.DiscoverReferences(context.TODO(), false, nil)
 	c.Assert(err, IsNil)
 	c.Assert(info, NotNil)
 
-	url := session.(*upSession).endpoint.String()
+	url := sess.(*session).endpoint.String()
 	c.Assert(url, Equals, "https://gitlab.com/gitlab-org/gitter/webapp.git")
 }
 
 func (s *UploadPackSuite) TestAdvertisedReferencesRedirectSchema(c *C) {
 	endpoint, _ := transport.NewEndpoint("http://github.com/git-fixtures/basic")
 
-	session, err := s.Client.NewUploadPackSession(endpoint, s.EmptyAuth)
+	sess, err := s.Client.NewSession(transport.UploadPackServiceName, endpoint, s.EmptyAuth)
 	c.Assert(err, IsNil)
 
-	info, err := session.AdvertisedReferences()
+	info, err := sess.DiscoverReferences(context.TODO(), false, nil)
 	c.Assert(err, IsNil)
 	c.Assert(info, NotNil)
 
-	url := session.(*upSession).endpoint.String()
+	url := sess.(*session).endpoint.String()
 	c.Assert(url, Equals, "https://github.com/git-fixtures/basic")
 }
 
@@ -111,14 +111,14 @@ func (s *UploadPackSuite) TestAdvertisedReferencesContext(c *C) {
 	defer cancel()
 	endpoint, _ := transport.NewEndpoint("http://github.com/git-fixtures/basic")
 
-	session, err := s.Client.NewUploadPackSession(endpoint, s.EmptyAuth)
+	sess, err := s.Client.NewSession(transport.UploadPackServiceName, endpoint, s.EmptyAuth)
 	c.Assert(err, IsNil)
 
-	info, err := session.AdvertisedReferencesContext(ctx)
+	info, err := sess.DiscoverReferences(ctx, false, nil)
 	c.Assert(err, IsNil)
 	c.Assert(info, NotNil)
 
-	url := session.(*upSession).endpoint.String()
+	url := sess.(*session).endpoint.String()
 	c.Assert(url, Equals, "https://github.com/git-fixtures/basic")
 }
 
@@ -127,10 +127,10 @@ func (s *UploadPackSuite) TestAdvertisedReferencesContextCanceled(c *C) {
 	cancel()
 	endpoint, _ := transport.NewEndpoint("http://github.com/git-fixtures/basic")
 
-	session, err := s.Client.NewUploadPackSession(endpoint, s.EmptyAuth)
+	session, err := s.Client.NewSession(transport.UploadPackServiceName, endpoint, s.EmptyAuth)
 	c.Assert(err, IsNil)
 
-	info, err := session.AdvertisedReferencesContext(ctx)
+	info, err := session.DiscoverReferences(ctx, false, nil)
 	c.Assert(err, DeepEquals, &url.Error{Op: "Get", URL: "http://github.com/git-fixtures/basic/info/refs?service=git-upload-pack", Err: context.Canceled})
 	c.Assert(info, IsNil)
 }

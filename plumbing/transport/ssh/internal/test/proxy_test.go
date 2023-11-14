@@ -71,11 +71,11 @@ func (s *ProxyEnvSuite) TestCommand(c *C) {
 	client := ggssh.NewClient(&stdssh.ClientConfig{
 		HostKeyCallback: stdssh.InsecureIgnoreHostKey(),
 	})
-	r, err := client.NewUploadPackSession(ep, nil)
+	r, err := client.NewSession(transport.UploadPackServiceName, ep, nil)
 	c.Assert(err, IsNil)
 	defer func() { c.Assert(r.Close(), IsNil) }()
 
-	info, err := r.AdvertisedReferences()
+	info, err := r.DiscoverReferences(context.TODO(), false, nil)
 	c.Assert(err, IsNil)
 	c.Assert(info, NotNil)
 	proxyUsed := atomic.LoadInt32(&socksProxiedRequests) > 0

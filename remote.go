@@ -113,14 +113,19 @@ func (r *Remote) PushContext(ctx context.Context, o *PushOptions) (err error) {
 		o.RemoteURL = r.c.URLs[0]
 	}
 
-	s, err := newSendPackSession(o.RemoteURL, o.Auth, o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
+	ep, err := newEndpoint(o.RemoteURL, o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
+	if err != nil {
+		return err
+	}
+
+	s, err := newSession(transport.ReceivePackServiceName, ep, o.Auth)
 	if err != nil {
 		return err
 	}
 
 	defer ioutil.CheckClose(s, &err)
 
-	ar, err := s.AdvertisedReferencesContext(ctx)
+	ar, err := s.DiscoverReferences(ctx, true, nil)
 	if err != nil {
 		return err
 	}
@@ -415,14 +420,19 @@ func (r *Remote) fetch(ctx context.Context, o *FetchOptions) (sto storer.Referen
 		o.RemoteURL = r.c.URLs[0]
 	}
 
-	s, err := newUploadPackSession(o.RemoteURL, o.Auth, o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
+	ep, err := newEndpoint(o.RemoteURL, o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := newSession(transport.UploadPackServiceName, ep, o.Auth)
 	if err != nil {
 		return nil, err
 	}
 
 	defer ioutil.CheckClose(s, &err)
 
-	ar, err := s.AdvertisedReferencesContext(ctx)
+	ar, err := s.DiscoverReferences(ctx, false, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -512,45 +522,32 @@ func depthChanged(before []plumbing.Hash, s storage.Storer) (bool, error) {
 	return false, nil
 }
 
-func newUploadPackSession(url string, auth transport.AuthMethod, insecure bool, cabundle []byte, proxyOpts transport.ProxyOptions) (transport.UploadPackSession, error) {
-	c, ep, err := newClient(url, insecure, cabundle, proxyOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	return c.NewUploadPackSession(ep, auth)
-}
-
-func newSendPackSession(url string, auth transport.AuthMethod, insecure bool, cabundle []byte, proxyOpts transport.ProxyOptions) (transport.ReceivePackSession, error) {
-	c, ep, err := newClient(url, insecure, cabundle, proxyOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	return c.NewReceivePackSession(ep, auth)
-}
-
-func newClient(url string, insecure bool, cabundle []byte, proxyOpts transport.ProxyOptions) (transport.Transport, *transport.Endpoint, error) {
+func newEndpoint(url string, insecure bool, cabundle []byte, proxyOpts transport.ProxyOptions) (*transport.Endpoint, error) {
 	ep, err := transport.NewEndpoint(url)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+
 	ep.InsecureSkipTLS = insecure
 	ep.CaBundle = cabundle
 	ep.Proxy = proxyOpts
 
-	c, err := client.NewClient(ep)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return c, ep, err
+	return ep, nil
 }
 
-func (r *Remote) fetchPack(ctx context.Context, o *FetchOptions, s transport.UploadPackSession,
+func newSession(service string, ep *transport.Endpoint, auth transport.AuthMethod) (transport.Session, error) {
+	c, err := client.NewClient(ep)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.NewSession(service, ep, auth)
+}
+
+func (r *Remote) fetchPack(ctx context.Context, o *FetchOptions, s transport.Session,
 	req *packp.UploadPackRequest) (err error) {
 
-	reader, err := s.UploadPack(ctx, req)
+	reader, err := s.Fetch(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -1302,14 +1299,19 @@ func (r *Remote) list(ctx context.Context, o *ListOptions) (rfs []*plumbing.Refe
 		return nil, ErrEmptyUrls
 	}
 
-	s, err := newUploadPackSession(r.c.URLs[0], o.Auth, o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
+	ep, err := newEndpoint(r.c.URLs[0], o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := newSession(transport.UploadPackServiceName, ep, o.Auth)
 	if err != nil {
 		return nil, err
 	}
 
 	defer ioutil.CheckClose(s, &err)
 
-	ar, err := s.AdvertisedReferencesContext(ctx)
+	ar, err := s.DiscoverReferences(ctx, false, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1379,7 +1381,7 @@ func referencesToHashes(refs storer.ReferenceStorer) ([]plumbing.Hash, error) {
 
 func pushHashes(
 	ctx context.Context,
-	sess transport.ReceivePackSession,
+	sess transport.Session,
 	s storage.Storer,
 	req *packp.ReferenceUpdateRequest,
 	hs []plumbing.Hash,
@@ -1414,7 +1416,7 @@ func pushHashes(
 		close(done)
 	}
 
-	rs, err := sess.ReceivePack(ctx, req)
+	rs, err := sess.Push(ctx, req)
 	if err != nil {
 		// close the pipe to unlock encode write
 		_ = rd.Close()

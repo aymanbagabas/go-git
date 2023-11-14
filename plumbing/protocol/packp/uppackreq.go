@@ -12,6 +12,7 @@ import (
 
 // UploadPackRequest represents a upload-pack request.
 // Zero-value is not safe, use NewUploadPackRequest instead.
+// See https://git-scm.com/docs/pack-protocol#_packfile_negotiation
 type UploadPackRequest struct {
 	UploadRequest
 	UploadHaves

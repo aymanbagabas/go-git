@@ -59,12 +59,12 @@ func (s *ProxySuite) TestAdvertisedReferences(c *C) {
 	endpoint.InsecureSkipTLS = true
 
 	client := http.DefaultClient
-	session, err := client.NewUploadPackSession(endpoint, nil)
+	session, err := client.NewSession(transport.UploadPackServiceName, endpoint, nil)
 	c.Assert(err, IsNil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	info, err := session.AdvertisedReferencesContext(ctx)
+	info, err := session.DiscoverReferences(ctx, false, nil)
 	c.Assert(err, IsNil)
 	c.Assert(info, NotNil)
 	proxyUsed := atomic.LoadInt32(&proxiedRequests) > 0

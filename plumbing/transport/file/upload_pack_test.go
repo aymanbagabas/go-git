@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"os"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -48,9 +49,9 @@ func (s *UploadPackSuite) TestCommandNoOutput(c *C) {
 	}
 
 	client := NewClient("true", "true")
-	session, err := client.NewUploadPackSession(s.Endpoint, s.EmptyAuth)
+	session, err := client.NewSession(transport.UploadPackServiceName, s.Endpoint, s.EmptyAuth)
 	c.Assert(err, IsNil)
-	ar, err := session.AdvertisedReferences()
+	ar, err := session.DiscoverReferences(context.TODO(), false, nil)
 	c.Assert(err, IsNil)
 	c.Assert(ar, IsNil)
 }
@@ -61,9 +62,9 @@ func (s *UploadPackSuite) TestMalformedInputNoErrors(c *C) {
 	}
 
 	client := NewClient("yes", "yes")
-	session, err := client.NewUploadPackSession(s.Endpoint, s.EmptyAuth)
+	session, err := client.NewSession(transport.UploadPackServiceName, s.Endpoint, s.EmptyAuth)
 	c.Assert(err, IsNil)
-	ar, err := session.AdvertisedReferences()
+	ar, err := session.DiscoverReferences(context.TODO(), false, nil)
 	c.Assert(err, NotNil)
 	c.Assert(ar, IsNil)
 }
@@ -71,7 +72,7 @@ func (s *UploadPackSuite) TestMalformedInputNoErrors(c *C) {
 func (s *UploadPackSuite) TestNonExistentCommand(c *C) {
 	cmd := "/non-existent-git"
 	client := NewClient(cmd, cmd)
-	session, err := client.NewUploadPackSession(s.Endpoint, s.EmptyAuth)
+	session, err := client.NewSession(transport.UploadPackServiceName, s.Endpoint, s.EmptyAuth)
 	// Error message is OS-dependant, so do a broad check
 	c.Assert(err, ErrorMatches, ".*file.*")
 	c.Assert(session, IsNil)

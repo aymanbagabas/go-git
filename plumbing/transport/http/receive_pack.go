@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/sideband"
@@ -15,24 +13,11 @@ import (
 	"github.com/go-git/go-git/v5/utils/ioutil"
 )
 
-type rpSession struct {
-	*session
+func (s *session) DiscoverReferences(ctx context.Context, forPush bool, _ *transport.SessionOptions) (*packp.AdvRefs, error) {
+	return advertisedReferences(ctx, s, forPush)
 }
 
-func newReceivePackSession(c *client, ep *transport.Endpoint, auth transport.AuthMethod) (transport.ReceivePackSession, error) {
-	s, err := newSession(c, ep, auth)
-	return &rpSession{s}, err
-}
-
-func (s *rpSession) AdvertisedReferences() (*packp.AdvRefs, error) {
-	return advertisedReferences(context.TODO(), s.session, transport.ReceivePackServiceName)
-}
-
-func (s *rpSession) AdvertisedReferencesContext(ctx context.Context) (*packp.AdvRefs, error) {
-	return advertisedReferences(ctx, s.session, transport.ReceivePackServiceName)
-}
-
-func (s *rpSession) ReceivePack(ctx context.Context, req *packp.ReferenceUpdateRequest) (
+func (s *session) Push(ctx context.Context, req *packp.ReferenceUpdateRequest) (
 	*packp.ReportStatus, error) {
 	url := fmt.Sprintf(
 		"%s/%s",
@@ -77,33 +62,4 @@ func (s *rpSession) ReceivePack(ctx context.Context, req *packp.ReferenceUpdateR
 	}
 
 	return report, report.Error()
-}
-
-func (s *rpSession) doRequest(
-	ctx context.Context, method, url string, content *bytes.Buffer,
-) (*http.Response, error) {
-
-	var body io.Reader
-	if content != nil {
-		body = content
-	}
-
-	req, err := http.NewRequest(method, url, body)
-	if err != nil {
-		return nil, plumbing.NewPermanentError(err)
-	}
-
-	applyHeadersToRequest(req, content, s.endpoint.Host, transport.ReceivePackServiceName)
-	s.ApplyAuthToRequest(req)
-
-	res, err := s.client.Do(req.WithContext(ctx))
-	if err != nil {
-		return nil, plumbing.NewUnexpectedError(err)
-	}
-
-	if err := NewErr(res); err != nil {
-		return nil, err
-	}
-
-	return res, nil
 }

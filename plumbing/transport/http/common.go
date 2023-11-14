@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -39,7 +40,12 @@ func applyHeadersToRequest(req *http.Request, content *bytes.Buffer, host string
 
 const infoRefsPath = "/info/refs"
 
-func advertisedReferences(ctx context.Context, s *session, serviceName string) (ref *packp.AdvRefs, err error) {
+func advertisedReferences(ctx context.Context, s *session, forPush bool) (ref *packp.AdvRefs, err error) {
+	serviceName := transport.UploadPackServiceName
+	if forPush {
+		serviceName = transport.ReceivePackServiceName
+	}
+
 	url := fmt.Sprintf(
 		"%s%s?service=%s",
 		s.endpoint.String(), infoRefsPath, serviceName,
@@ -80,7 +86,7 @@ func advertisedReferences(ctx context.Context, s *session, serviceName string) (
 	// This logic aligns with plumbing/transport/internal/common/common.go.
 	if ar.IsEmpty() &&
 		// Empty repositories are valid for git-receive-pack.
-		transport.ReceivePackServiceName != serviceName {
+		!forPush {
 		return nil, transport.ErrEmptyRemoteRepository
 	}
 
@@ -158,23 +164,22 @@ func NewClientWithOptions(c *http.Client, opts *ClientOptions) transport.Transpo
 	return cl
 }
 
-func (c *client) NewUploadPackSession(ep *transport.Endpoint, auth transport.AuthMethod) (
-	transport.UploadPackSession, error) {
+func (c *client) NewSession(s string, ep *transport.Endpoint, auth transport.AuthMethod) (transport.Session, error) {
+	switch s {
+	case transport.UploadPackServiceName, transport.ReceivePackServiceName:
+		return newSession(c, s, ep, auth)
+	}
 
-	return newUploadPackSession(c, ep, auth)
-}
-
-func (c *client) NewReceivePackSession(ep *transport.Endpoint, auth transport.AuthMethod) (
-	transport.ReceivePackSession, error) {
-
-	return newReceivePackSession(c, ep, auth)
+	return nil, transport.ErrUnsupportedService
 }
 
 type session struct {
 	auth     AuthMethod
 	client   *http.Client
 	endpoint *transport.Endpoint
-	advRefs  *packp.AdvRefs
+	service  string
+
+	advRefs *packp.AdvRefs
 }
 
 func transportWithInsecureTLS(transport *http.Transport) {
@@ -224,7 +229,7 @@ func configureTransport(transport *http.Transport, ep *transport.Endpoint) error
 	return nil
 }
 
-func newSession(c *client, ep *transport.Endpoint, auth transport.AuthMethod) (*session, error) {
+func newSession(c *client, service string, ep *transport.Endpoint, auth transport.AuthMethod) (*session, error) {
 	var httpClient *http.Client
 
 	// We need to configure the http transport if there are transport specific
@@ -278,6 +283,7 @@ func newSession(c *client, ep *transport.Endpoint, auth transport.AuthMethod) (*
 		auth:     basicAuthFromEndpoint(ep),
 		client:   httpClient,
 		endpoint: ep,
+		service:  service,
 	}
 	if auth != nil {
 		a, ok := auth.(AuthMethod)
@@ -289,6 +295,35 @@ func newSession(c *client, ep *transport.Endpoint, auth transport.AuthMethod) (*
 	}
 
 	return s, nil
+}
+
+func (s *session) doRequest(
+	ctx context.Context, method, url string, content *bytes.Buffer,
+) (*http.Response, error) {
+
+	var body io.Reader
+	if content != nil {
+		body = content
+	}
+
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, plumbing.NewPermanentError(err)
+	}
+
+	applyHeadersToRequest(req, content, s.endpoint.Host, s.service)
+	s.ApplyAuthToRequest(req)
+
+	res, err := s.client.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, plumbing.NewUnexpectedError(err)
+	}
+
+	if err := NewErr(res); err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func (s *session) ApplyAuthToRequest(req *http.Request) {

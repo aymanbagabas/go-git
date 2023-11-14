@@ -109,7 +109,7 @@ func (s *SuiteCommon) TestIgnoreHostKeyCallback(c *C) {
 	c.Assert(auth, NotNil)
 	auth.HostKeyCallback = stdssh.InsecureIgnoreHostKey()
 	ep := uploadPack.newEndpoint(c, "bar.git")
-	ps, err := uploadPack.Client.NewUploadPackSession(ep, auth)
+	ps, err := uploadPack.Client.NewSession(transport.UploadPackServiceName, ep, auth)
 	c.Assert(err, IsNil)
 	c.Assert(ps, NotNil)
 }
@@ -130,7 +130,7 @@ func (s *SuiteCommon) TestFixedHostKeyCallback(c *C) {
 	c.Assert(auth, NotNil)
 	auth.HostKeyCallback = stdssh.FixedHostKey(hostKey.PublicKey())
 	ep := uploadPack.newEndpoint(c, "bar.git")
-	ps, err := uploadPack.Client.NewUploadPackSession(ep, auth)
+	ps, err := uploadPack.Client.NewSession(transport.UploadPackServiceName, ep, auth)
 	c.Assert(err, IsNil)
 	c.Assert(ps, NotNil)
 }
@@ -148,7 +148,7 @@ func (s *SuiteCommon) TestFailHostKeyCallback(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(auth, NotNil)
 	ep := uploadPack.newEndpoint(c, "bar.git")
-	_, err = uploadPack.Client.NewUploadPackSession(ep, auth)
+	_, err = uploadPack.Client.NewSession(transport.UploadPackServiceName, ep, auth)
 	c.Assert(err, NotNil)
 }
 
@@ -187,7 +187,7 @@ func (s *SuiteCommon) TestInvalidSocks5Proxy(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(auth, NotNil)
 
-	ps, err := DefaultClient.NewUploadPackSession(ep, auth)
+	ps, err := DefaultClient.NewSession(transport.UploadPackServiceName, ep, auth)
 	//Since the proxy server is not running, we expect an error.
 	c.Assert(ps, IsNil)
 	c.Assert(err, NotNil)

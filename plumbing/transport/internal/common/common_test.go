@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -128,12 +129,12 @@ remote:`,
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := NewClient(MockCommander{stderr: tt.stderr})
-			sess, err := client.NewUploadPackSession(nil, nil)
+			sess, err := client.NewSession(transport.UploadPackServiceName, nil, nil)
 			if err != nil {
 				t.Fatalf("unexpected error: %s", err)
 			}
 
-			_, err = sess.AdvertisedReferences()
+			_, err = sess.DiscoverReferences(context.TODO(), false, nil)
 
 			if tt.wantErr != nil {
 				if tt.wantErr != err {

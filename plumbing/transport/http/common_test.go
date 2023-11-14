@@ -116,7 +116,7 @@ func (s *ClientSuite) Test_newSession(c *C) {
 
 	insecureEP := s.Endpoint
 	insecureEP.InsecureSkipTLS = true
-	session, err := newSession(cl, insecureEP, nil)
+	session, err := newSession(cl, "", insecureEP, nil)
 	c.Assert(err, IsNil)
 
 	sessionTransport := session.client.Transport.(*http.Transport)
@@ -131,7 +131,7 @@ func (s *ClientSuite) Test_newSession(c *C) {
 
 	caEndpoint := insecureEP
 	caEndpoint.CaBundle = []byte("this is the way")
-	session, err = newSession(cl, caEndpoint, nil)
+	session, err = newSession(cl, "", caEndpoint, nil)
 	c.Assert(err, IsNil)
 
 	sessionTransport = session.client.Transport.(*http.Transport)
@@ -146,7 +146,7 @@ func (s *ClientSuite) Test_newSession(c *C) {
 	// cached transport should be the one that's used.
 	c.Assert(sessionTransport, Equals, t)
 
-	session, err = newSession(cl, caEndpoint, nil)
+	session, err = newSession(cl, "", caEndpoint, nil)
 	c.Assert(err, IsNil)
 	sessionTransport = session.client.Transport.(*http.Transport)
 	// transport that's going to be used should be cached already.
@@ -156,7 +156,7 @@ func (s *ClientSuite) Test_newSession(c *C) {
 
 	// if the cache does not exist, the transport should still be correctly configured.
 	cl.transports = nil
-	session, err = newSession(cl, insecureEP, nil)
+	session, err = newSession(cl, "", insecureEP, nil)
 	c.Assert(err, IsNil)
 
 	sessionTransport = session.client.Transport.(*http.Transport)
@@ -177,9 +177,9 @@ func (s *ClientSuite) testNewHTTPError(c *C, code int, msg string) {
 
 func (s *ClientSuite) TestSetAuth(c *C) {
 	auth := &BasicAuth{}
-	r, err := DefaultClient.NewUploadPackSession(s.Endpoint, auth)
+	r, err := DefaultClient.NewSession(transport.UploadPackServiceName, s.Endpoint, auth)
 	c.Assert(err, IsNil)
-	c.Assert(auth, Equals, r.(*upSession).auth)
+	c.Assert(auth, Equals, r.(*session).auth)
 }
 
 type mockAuth struct{}
@@ -188,7 +188,7 @@ func (*mockAuth) Name() string   { return "" }
 func (*mockAuth) String() string { return "" }
 
 func (s *ClientSuite) TestSetAuthWrongType(c *C) {
-	_, err := DefaultClient.NewUploadPackSession(s.Endpoint, &mockAuth{})
+	_, err := DefaultClient.NewSession(transport.UploadPackServiceName, s.Endpoint, &mockAuth{})
 	c.Assert(err, Equals, transport.ErrInvalidAuthMethod)
 }
 

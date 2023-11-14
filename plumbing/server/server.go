@@ -1,4 +1,4 @@
-package common
+package server
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/utils/ioutil"
 )
@@ -17,10 +18,11 @@ type ServerCommand struct {
 	Stdin  io.Reader
 }
 
-func ServeUploadPack(cmd ServerCommand, s transport.UploadPackSession) (err error) {
-	ioutil.CheckClose(cmd.Stdout, &err)
+func ServeUploadPack(ctx context.Context, cmd ServerCommand, st storer.Storer) (err error) {
+	defer ioutil.CheckClose(cmd.Stdout, &err)
 
-	ar, err := s.AdvertisedReferences()
+	// Supported capabilities by the server.
+	ar, err := advertiseReferences(st, false)
 	if err != nil {
 		return err
 	}
@@ -34,8 +36,25 @@ func ServeUploadPack(cmd ServerCommand, s transport.UploadPackSession) (err erro
 		return err
 	}
 
-	var resp *packp.UploadPackResponse
-	resp, err = s.UploadPack(context.TODO(), req)
+	if req.IsEmpty() {
+		return transport.ErrEmptyUploadPackRequest
+	}
+
+	if err := req.Validate(); err != nil {
+		return err
+	}
+
+	if len(req.Shallows) > 0 {
+		// TODO implement shallow
+		return fmt.Errorf("shallow not supported")
+	}
+
+	// Check if the server supports the capabilities requested by the client.
+	if err := checkSupportedCapabilities(ar.Capabilities, req.Capabilities); err != nil {
+		return err
+	}
+
+	resp, err := UploadPack(ctx, st, req)
 	if err != nil {
 		return err
 	}
@@ -43,8 +62,9 @@ func ServeUploadPack(cmd ServerCommand, s transport.UploadPackSession) (err erro
 	return resp.Encode(cmd.Stdout)
 }
 
-func ServeReceivePack(cmd ServerCommand, s transport.ReceivePackSession) error {
-	ar, err := s.AdvertisedReferences()
+func ServeReceivePack(ctx context.Context, cmd ServerCommand, st storer.Storer) error {
+	// Supported capabilities by the server.
+	ar, err := advertiseReferences(st, true)
 	if err != nil {
 		return fmt.Errorf("internal error in advertised references: %s", err)
 	}
@@ -58,7 +78,12 @@ func ServeReceivePack(cmd ServerCommand, s transport.ReceivePackSession) error {
 		return fmt.Errorf("error decoding: %s", err)
 	}
 
-	rs, err := s.ReceivePack(context.TODO(), req)
+	// Check if the server supports the capabilities requested by the client.
+	if err := checkSupportedCapabilities(ar.Capabilities, req.Capabilities); err != nil {
+		return err
+	}
+
+	rs, err := ReceivePack(ctx, st, req)
 	if rs != nil {
 		if err := rs.Encode(cmd.Stdout); err != nil {
 			return fmt.Errorf("error in encoding report status %s", err)

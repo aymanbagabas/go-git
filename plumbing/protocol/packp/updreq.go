@@ -16,6 +16,7 @@ var (
 
 // ReferenceUpdateRequest values represent reference upload requests.
 // Values from this type are not zero-value safe, use the New function instead.
+// See https://git-scm.com/docs/pack-protocol#_reference_update_request_and_packfile_transfer
 type ReferenceUpdateRequest struct {
 	Capabilities *capability.List
 	Commands     []*Command
@@ -48,6 +49,7 @@ func NewReferenceUpdateRequest() *ReferenceUpdateRequest {
 //   - ofs-delta
 //   - ref-delta
 //   - delete-refs
+//
 // It leaves up to the user to add the following capabilities later:
 //   - atomic
 //   - ofs-delta
