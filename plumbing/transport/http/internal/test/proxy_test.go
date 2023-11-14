@@ -58,7 +58,7 @@ func (s *ProxySuite) TestAdvertisedReferences(c *C) {
 	c.Assert(err, IsNil)
 	endpoint.InsecureSkipTLS = true
 
-	client := http.DefaultClient
+	client := http.DefaultTransport
 	session, err := client.NewSession(transport.UploadPackServiceName, endpoint, nil)
 	c.Assert(err, IsNil)
 

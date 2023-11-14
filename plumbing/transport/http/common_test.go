@@ -44,7 +44,7 @@ func (s *UploadPackSuite) TestNewClient(c *C) {
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	cl := &http.Client{Transport: roundTripper}
-	r, ok := NewClient(cl).(*client)
+	r, ok := NewTransport(cl, nil).(*client)
 	c.Assert(ok, Equals, true)
 	c.Assert(r.c, Equals, cl)
 }
@@ -110,7 +110,7 @@ func (s *ClientSuite) TestNewUnexpectedError(c *C) {
 }
 
 func (s *ClientSuite) Test_newSession(c *C) {
-	cl := NewClientWithOptions(nil, &ClientOptions{
+	cl := NewTransport(nil, &ClientOptions{
 		CacheMaxEntries: 2,
 	}).(*client)
 
@@ -177,7 +177,7 @@ func (s *ClientSuite) testNewHTTPError(c *C, code int, msg string) {
 
 func (s *ClientSuite) TestSetAuth(c *C) {
 	auth := &BasicAuth{}
-	r, err := DefaultClient.NewSession(transport.UploadPackServiceName, s.Endpoint, auth)
+	r, err := DefaultTransport.NewSession(transport.UploadPackServiceName, s.Endpoint, auth)
 	c.Assert(err, IsNil)
 	c.Assert(auth, Equals, r.(*session).auth)
 }
@@ -188,7 +188,7 @@ func (*mockAuth) Name() string   { return "" }
 func (*mockAuth) String() string { return "" }
 
 func (s *ClientSuite) TestSetAuthWrongType(c *C) {
-	_, err := DefaultClient.NewSession(transport.UploadPackServiceName, s.Endpoint, &mockAuth{})
+	_, err := DefaultTransport.NewSession(transport.UploadPackServiceName, s.Endpoint, &mockAuth{})
 	c.Assert(err, Equals, transport.ErrInvalidAuthMethod)
 }
 

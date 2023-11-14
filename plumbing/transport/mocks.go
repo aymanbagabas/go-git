@@ -1,12 +1,10 @@
-package common
+package transport
 
 import (
 	"bytes"
 	"io"
 
 	gogitioutil "github.com/go-git/go-git/v5/utils/ioutil"
-
-	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
 type MockCommand struct {
@@ -39,7 +37,7 @@ type MockCommander struct {
 	stderr string
 }
 
-func (c MockCommander) Command(cmd string, ep *transport.Endpoint, auth transport.AuthMethod) (Command, error) {
+func (c MockCommander) Command(cmd string, ep *Endpoint, auth AuthMethod) (Command, error) {
 	return &MockCommand{
 		stderr: *bytes.NewBufferString(c.stderr),
 	}, nil

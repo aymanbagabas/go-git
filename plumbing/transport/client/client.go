@@ -14,11 +14,11 @@ import (
 
 // Protocols are the protocols supported by default.
 var Protocols = map[string]transport.Transport{
-	"http":  http.DefaultClient,
-	"https": http.DefaultClient,
-	"ssh":   ssh.DefaultClient,
-	"git":   git.DefaultClient,
-	"file":  file.DefaultClient,
+	"http":  http.DefaultTransport,
+	"https": http.DefaultTransport,
+	"ssh":   ssh.DefaultTransport,
+	"git":   git.DefaultTransport,
+	"file":  file.DefaultTransport,
 }
 
 // InstallProtocol adds or modifies an existing protocol.

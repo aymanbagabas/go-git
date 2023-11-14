@@ -10,7 +10,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/format/pktline"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	"github.com/go-git/go-git/v5/plumbing/transport/internal/common"
 	"github.com/go-git/go-git/v5/utils/ioutil"
 )
 
@@ -51,7 +50,7 @@ func (s *session) Fetch(
 	}
 
 	rc := ioutil.NewReadCloser(r, res.Body)
-	return common.DecodeUploadPackResponse(rc, req)
+	return transport.DecodeUploadPackResponse(rc, req)
 }
 
 func uploadPackRequestToReader(req *packp.UploadPackRequest) (*bytes.Buffer, error) {

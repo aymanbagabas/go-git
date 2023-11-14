@@ -12,9 +12,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-git/go-git/v5/internal/transport/test"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	testutils "github.com/go-git/go-git/v5/plumbing/transport/ssh/internal/test"
-	"github.com/go-git/go-git/v5/plumbing/transport/test"
 
 	"github.com/gliderlabs/ssh"
 	fixtures "github.com/go-git/go-git-fixtures/v4"
@@ -49,7 +49,7 @@ func (s *UploadPackSuite) SetUpSuite(c *C) {
 		return &Password{User: user}, nil
 	}
 
-	s.UploadPackSuite.Client = NewClient(&stdssh.ClientConfig{
+	s.UploadPackSuite.Client = NewTransport(&stdssh.ClientConfig{
 		HostKeyCallback: stdssh.InsecureIgnoreHostKey(),
 	})
 

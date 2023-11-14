@@ -9,19 +9,23 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/format/pktline"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	"github.com/go-git/go-git/v5/plumbing/transport/internal/common"
 	"github.com/go-git/go-git/v5/utils/ioutil"
 )
 
-// DefaultClient is the default git client.
-var DefaultClient = common.NewClient(&runner{})
+// DefaultTransport is the default git client.
+var DefaultTransport = NewTransport()
 
 const DefaultPort = 9418
 
 type runner struct{}
 
+// NewTransport returns a new git.Transport.
+func NewTransport() transport.Transport {
+	return transport.NewCommon(&runner{})
+}
+
 // Command returns a new Command for the given cmd in the given Endpoint
-func (r *runner) Command(cmd string, ep *transport.Endpoint, auth transport.AuthMethod) (common.Command, error) {
+func (r *runner) Command(cmd string, ep *transport.Endpoint, auth transport.AuthMethod) (transport.Command, error) {
 	// auth not allowed since git protocol doesn't support authentication
 	if auth != nil {
 		return nil, transport.ErrInvalidAuthMethod

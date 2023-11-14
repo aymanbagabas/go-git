@@ -118,49 +118,36 @@ var (
 	// opt-in feature.
 	defaultTransportCacheSize = 0
 
-	// DefaultClient is the default HTTP client, which uses a net/http client configured
+	// DefaultTransport is the default HTTP client, which uses a net/http client configured
 	// with http.DefaultTransport.
-	DefaultClient = NewClient(nil)
+	DefaultTransport = NewTransport(nil, nil)
 )
 
-// NewClient creates a new client with a custom net/http client.
-// See `InstallProtocol` to install and override default http client.
+// NewTransport creates a new client with a custom net/http client and other
+// custom options specific to the client.
+// See `transport.Register` to install and override default http client.
 // If the net/http client is nil or empty, it will use a net/http client configured
 // with http.DefaultTransport.
 //
 // Note that for HTTP client cannot distinguish between private repositories and
 // unexistent repositories on GitHub. So it returns `ErrAuthorizationRequired`
 // for both.
-func NewClient(c *http.Client) transport.Transport {
+func NewTransport(c *http.Client, opts *ClientOptions) transport.Transport {
 	if c == nil {
 		c = &http.Client{
 			Transport: http.DefaultTransport,
 		}
 	}
-	return NewClientWithOptions(c, &ClientOptions{
-		CacheMaxEntries: defaultTransportCacheSize,
-	})
-}
 
-// NewClientWithOptions returns a new client configured with the provided net/http client
-// and other custom options specific to the client.
-// If the net/http client is nil or empty, it will use a net/http client configured
-// with http.DefaultTransport.
-func NewClientWithOptions(c *http.Client, opts *ClientOptions) transport.Transport {
-	if c == nil {
-		c = &http.Client{
-			Transport: http.DefaultTransport,
-		}
-	}
 	cl := &client{
 		c: c,
 	}
-
 	if opts != nil {
 		if opts.CacheMaxEntries > 0 {
 			cl.transports = lru.New(opts.CacheMaxEntries)
 		}
 	}
+
 	return cl
 }
 

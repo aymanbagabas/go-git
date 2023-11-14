@@ -50,7 +50,7 @@ func (s *ProxySuite) TestAdvertisedReferences(c *C) {
 		Password: "pass",
 	}
 
-	s.u.Client = NewClient(nil)
+	s.u.Client = NewTransport(nil, nil)
 	session, err := s.u.Client.NewSession(transport.UploadPackServiceName, endpoint, nil)
 	c.Assert(err, IsNil)
 

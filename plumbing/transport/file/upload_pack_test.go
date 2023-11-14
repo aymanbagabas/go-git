@@ -4,8 +4,8 @@ import (
 	"context"
 	"os"
 
+	"github.com/go-git/go-git/v5/internal/transport/test"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	"github.com/go-git/go-git/v5/plumbing/transport/test"
 
 	fixtures "github.com/go-git/go-git-fixtures/v4"
 	. "gopkg.in/check.v1"
@@ -21,7 +21,7 @@ var _ = Suite(&UploadPackSuite{})
 func (s *UploadPackSuite) SetUpSuite(c *C) {
 	s.CommonSuite.SetUpSuite(c)
 
-	s.UploadPackSuite.Client = DefaultClient
+	s.UploadPackSuite.Client = DefaultTransport
 
 	fixture := fixtures.Basic().One()
 	path := fixture.DotGit().Root()
@@ -48,7 +48,7 @@ func (s *UploadPackSuite) TestCommandNoOutput(c *C) {
 		c.Skip("/bin/true not found")
 	}
 
-	client := NewClient("true", "true")
+	client := NewTransport("true", "true")
 	session, err := client.NewSession(transport.UploadPackServiceName, s.Endpoint, s.EmptyAuth)
 	c.Assert(err, IsNil)
 	ar, err := session.DiscoverReferences(context.TODO(), false, nil)
@@ -61,7 +61,7 @@ func (s *UploadPackSuite) TestMalformedInputNoErrors(c *C) {
 		c.Skip("/usr/bin/yes not found")
 	}
 
-	client := NewClient("yes", "yes")
+	client := NewTransport("yes", "yes")
 	session, err := client.NewSession(transport.UploadPackServiceName, s.Endpoint, s.EmptyAuth)
 	c.Assert(err, IsNil)
 	ar, err := session.DiscoverReferences(context.TODO(), false, nil)
@@ -71,7 +71,7 @@ func (s *UploadPackSuite) TestMalformedInputNoErrors(c *C) {
 
 func (s *UploadPackSuite) TestNonExistentCommand(c *C) {
 	cmd := "/non-existent-git"
-	client := NewClient(cmd, cmd)
+	client := NewTransport(cmd, cmd)
 	session, err := client.NewSession(transport.UploadPackServiceName, s.Endpoint, s.EmptyAuth)
 	// Error message is OS-dependant, so do a broad check
 	c.Assert(err, ErrorMatches, ".*file.*")
