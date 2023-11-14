@@ -12,16 +12,21 @@ import (
 	"github.com/go-git/go-git/v5/utils/ioutil"
 )
 
+// DefaultPort is the default git port.
+const DefaultPort = 9418
+
 // DefaultTransport is the default git client.
 var DefaultTransport = NewTransport()
 
-const DefaultPort = 9418
-
 type runner struct{}
+
+func init() {
+	transport.Register("git", DefaultTransport)
+}
 
 // NewTransport returns a new git.Transport.
 func NewTransport() transport.Transport {
-	return transport.NewCommon(&runner{})
+	return transport.NewCommonTransfer(&runner{})
 }
 
 // Command returns a new Command for the given cmd in the given Endpoint

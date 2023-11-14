@@ -80,8 +80,10 @@ type client struct {
 	cmdr Commander
 }
 
-// NewCommon creates a new transport using the given Commander.
-func NewCommon(runner Commander) Transport {
+// NewCommonTransfer creates a new common transport using the given Commander.
+// This implements the git pack protocol and is used in the git, ssh, and file
+// transports.
+func NewCommonTransfer(runner Commander) Transport {
 	return &client{runner}
 }
 

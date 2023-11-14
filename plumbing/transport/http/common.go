@@ -23,78 +23,16 @@ import (
 	"github.com/golang/groupcache/lru"
 )
 
-// it requires a bytes.Buffer, because we need to know the length
-func applyHeadersToRequest(req *http.Request, content *bytes.Buffer, host string, requestType string) {
-	req.Header.Add("User-Agent", "git/1.0")
-	req.Header.Add("Host", host) // host:port
+// defaultTransportCacheSize is the default capacity of the transport objects cache.
+// Its value is 0 because transport caching is turned off by default and is an
+// opt-in feature.
+const defaultTransportCacheSize = 0
 
-	if content == nil {
-		req.Header.Add("Accept", "*/*")
-		return
-	}
-
-	req.Header.Add("Accept", fmt.Sprintf("application/x-%s-result", requestType))
-	req.Header.Add("Content-Type", fmt.Sprintf("application/x-%s-request", requestType))
-	req.Header.Add("Content-Length", strconv.Itoa(content.Len()))
-}
-
-const infoRefsPath = "/info/refs"
-
-func advertisedReferences(ctx context.Context, s *session, forPush bool) (ref *packp.AdvRefs, err error) {
-	serviceName := transport.UploadPackServiceName
-	if forPush {
-		serviceName = transport.ReceivePackServiceName
-	}
-
-	url := fmt.Sprintf(
-		"%s%s?service=%s",
-		s.endpoint.String(), infoRefsPath, serviceName,
-	)
-
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	s.ApplyAuthToRequest(req)
-	applyHeadersToRequest(req, nil, s.endpoint.Host, serviceName)
-	res, err := s.client.Do(req.WithContext(ctx))
-	if err != nil {
-		return nil, err
-	}
-
-	s.ModifyEndpointIfRedirect(res)
-	defer ioutil.CheckClose(res.Body, &err)
-
-	if err = NewErr(res); err != nil {
-		return nil, err
-	}
-
-	ar := packp.NewAdvRefs()
-	if err = ar.Decode(res.Body); err != nil {
-		if err == packp.ErrEmptyAdvRefs {
-			err = transport.ErrEmptyRemoteRepository
-		}
-
-		return nil, err
-	}
-
-	// Git 2.41+ returns a zero-id plus capabilities when an empty
-	// repository is being cloned. This skips the existing logic within
-	// advrefs_decode.decodeFirstHash, which expects a flush-pkt instead.
-	//
-	// This logic aligns with plumbing/transport/internal/common/common.go.
-	if ar.IsEmpty() &&
-		// Empty repositories are valid for git-receive-pack.
-		!forPush {
-		return nil, transport.ErrEmptyRemoteRepository
-	}
-
-	transport.FilterUnsupportedCapabilities(ar.Capabilities)
-	s.advRefs = ar
-
-	return ar, nil
-}
+var (
+	// DefaultTransport is the default HTTP client, which uses a net/http client configured
+	// with http.DefaultTransport.
+	DefaultTransport = NewTransport(nil, nil)
+)
 
 type client struct {
 	c          *http.Client
@@ -112,16 +50,10 @@ type ClientOptions struct {
 	CacheMaxEntries int
 }
 
-var (
-	// defaultTransportCacheSize is the default capacity of the transport objects cache.
-	// Its value is 0 because transport caching is turned off by default and is an
-	// opt-in feature.
-	defaultTransportCacheSize = 0
-
-	// DefaultTransport is the default HTTP client, which uses a net/http client configured
-	// with http.DefaultTransport.
-	DefaultTransport = NewTransport(nil, nil)
-)
+func init() {
+	transport.Register("http", DefaultTransport)
+	transport.Register("https", DefaultTransport)
+}
 
 // NewTransport creates a new client with a custom net/http client and other
 // custom options specific to the client.
@@ -214,6 +146,79 @@ func configureTransport(transport *http.Transport, ep *transport.Endpoint) error
 		transportWithProxy(transport, proxyURL)
 	}
 	return nil
+}
+
+// it requires a bytes.Buffer, because we need to know the length
+func applyHeadersToRequest(req *http.Request, content *bytes.Buffer, host string, requestType string) {
+	req.Header.Add("User-Agent", "git/1.0")
+	req.Header.Add("Host", host) // host:port
+
+	if content == nil {
+		req.Header.Add("Accept", "*/*")
+		return
+	}
+
+	req.Header.Add("Accept", fmt.Sprintf("application/x-%s-result", requestType))
+	req.Header.Add("Content-Type", fmt.Sprintf("application/x-%s-request", requestType))
+	req.Header.Add("Content-Length", strconv.Itoa(content.Len()))
+}
+
+const infoRefsPath = "/info/refs"
+
+func advertisedReferences(ctx context.Context, s *session, forPush bool) (ref *packp.AdvRefs, err error) {
+	serviceName := transport.UploadPackServiceName
+	if forPush {
+		serviceName = transport.ReceivePackServiceName
+	}
+
+	url := fmt.Sprintf(
+		"%s%s?service=%s",
+		s.endpoint.String(), infoRefsPath, serviceName,
+	)
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	s.ApplyAuthToRequest(req)
+	applyHeadersToRequest(req, nil, s.endpoint.Host, serviceName)
+	res, err := s.client.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	s.ModifyEndpointIfRedirect(res)
+	defer ioutil.CheckClose(res.Body, &err)
+
+	if err = NewErr(res); err != nil {
+		return nil, err
+	}
+
+	ar := packp.NewAdvRefs()
+	if err = ar.Decode(res.Body); err != nil {
+		if err == packp.ErrEmptyAdvRefs {
+			err = transport.ErrEmptyRemoteRepository
+		}
+
+		return nil, err
+	}
+
+	// Git 2.41+ returns a zero-id plus capabilities when an empty
+	// repository is being cloned. This skips the existing logic within
+	// advrefs_decode.decodeFirstHash, which expects a flush-pkt instead.
+	//
+	// This logic aligns with plumbing/transport/internal/common/common.go.
+	if ar.IsEmpty() &&
+		// Empty repositories are valid for git-receive-pack.
+		!forPush {
+		return nil, transport.ErrEmptyRemoteRepository
+	}
+
+	transport.FilterUnsupportedCapabilities(ar.Capabilities)
+	s.advRefs = ar
+
+	return ar, nil
 }
 
 func newSession(c *client, service string, ep *transport.Endpoint, auth transport.AuthMethod) (*session, error) {

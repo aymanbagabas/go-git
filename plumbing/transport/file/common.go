@@ -25,10 +25,14 @@ type runner struct {
 	ReceivePackBin string
 }
 
+func init() {
+	transport.Register("file", DefaultTransport)
+}
+
 // NewTransport returns a new local client using the given git-upload-pack and
 // git-receive-pack binaries.
 func NewTransport(uploadPackBin, receivePackBin string) transport.Transport {
-	return transport.NewCommon(&runner{
+	return transport.NewCommonTransfer(&runner{
 		UploadPackBin:  uploadPackBin,
 		ReceivePackBin: receivePackBin,
 	})

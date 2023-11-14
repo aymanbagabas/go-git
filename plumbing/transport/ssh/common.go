@@ -17,29 +17,36 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-// DefaultTransport is the default SSH transport.
-var DefaultTransport = NewTransport(nil)
+// DefaultPort is the default SSH port.
+const DefaultPort = 22
 
-// DefaultSSHConfig is the reader used to access parameters stored in the
-// system's ssh_config files. If nil all the ssh_config are ignored.
-var DefaultSSHConfig sshConfig = ssh_config.DefaultUserSettings
+var (
+	// DefaultTransport is the default SSH transport.
+	DefaultTransport = NewTransport(nil)
+
+	// DefaultSSHConfig is the reader used to access parameters stored in the
+	// system's ssh_config files. If nil all the ssh_config are ignored.
+	DefaultSSHConfig sshConfig = ssh_config.DefaultUserSettings
+
+	// DefaultAuthBuilder is the function used to create a default AuthMethod, when
+	// the user doesn't provide any.
+	DefaultAuthBuilder = func(user string) (AuthMethod, error) {
+		return NewSSHAgentAuth(user)
+	}
+)
 
 type sshConfig interface {
 	Get(alias, key string) string
 }
 
+func init() {
+	transport.Register("ssh", DefaultTransport)
+}
+
 // NewTransport creates a new SSH client with an optional *ssh.ClientConfig.
 func NewTransport(config *ssh.ClientConfig) transport.Transport {
-	return transport.NewCommon(&runner{config: config})
+	return transport.NewCommonTransfer(&runner{config: config})
 }
-
-// DefaultAuthBuilder is the function used to create a default AuthMethod, when
-// the user doesn't provide any.
-var DefaultAuthBuilder = func(user string) (AuthMethod, error) {
-	return NewSSHAgentAuth(user)
-}
-
-const DefaultPort = 22
 
 type runner struct {
 	config *ssh.ClientConfig

@@ -21,7 +21,10 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/revlist"
 	"github.com/go-git/go-git/v5/plumbing/storer"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	"github.com/go-git/go-git/v5/plumbing/transport/client"
+	_ "github.com/go-git/go-git/v5/plumbing/transport/file" // file transport
+	_ "github.com/go-git/go-git/v5/plumbing/transport/git"  // git transport
+	_ "github.com/go-git/go-git/v5/plumbing/transport/http" // http transport
+	_ "github.com/go-git/go-git/v5/plumbing/transport/ssh"  // ssh transport
 	"github.com/go-git/go-git/v5/storage"
 	"github.com/go-git/go-git/v5/storage/filesystem"
 	"github.com/go-git/go-git/v5/storage/memory"
@@ -536,9 +539,9 @@ func newEndpoint(url string, insecure bool, cabundle []byte, proxyOpts transport
 }
 
 func newSession(service string, ep *transport.Endpoint, auth transport.AuthMethod) (transport.Session, error) {
-	c, err := client.NewClient(ep)
-	if err != nil {
-		return nil, err
+	c, ok := transport.Get(ep.Protocol)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", transport.ErrUnsupportedTransport, ep.Protocol)
 	}
 
 	return c.NewSession(service, ep, auth)

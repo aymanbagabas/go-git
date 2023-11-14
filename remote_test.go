@@ -50,7 +50,7 @@ func (s *RemoteSuite) TestFetchNonExistentEndpoint(c *C) {
 func (s *RemoteSuite) TestFetchInvalidSchemaEndpoint(c *C) {
 	r := NewRemote(nil, &config.RemoteConfig{Name: "foo", URLs: []string{"qux://foo"}})
 	err := r.Fetch(&FetchOptions{})
-	c.Assert(err, ErrorMatches, ".*unsupported scheme.*")
+	c.Assert(err, ErrorMatches, "unsupported transport.*")
 }
 
 func (s *RemoteSuite) TestFetchOverriddenEndpoint(c *C) {
@@ -1180,7 +1180,7 @@ func (s *RemoteSuite) TestPushOverriddenEndpoint(c *C) {
 func (s *RemoteSuite) TestPushInvalidSchemaEndpoint(c *C) {
 	r := NewRemote(nil, &config.RemoteConfig{Name: "origin", URLs: []string{"qux://foo"}})
 	err := r.Push(&PushOptions{})
-	c.Assert(err, ErrorMatches, ".*unsupported scheme.*")
+	c.Assert(err, ErrorMatches, "unsupported transport.*")
 }
 
 func (s *RemoteSuite) TestPushInvalidFetchOptions(c *C) {

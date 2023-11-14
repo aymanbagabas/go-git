@@ -13,4 +13,5 @@ var (
 	ErrInvalidAuthMethod      = errors.New("invalid auth method")
 	ErrAlreadyConnected       = errors.New("session already established")
 	ErrUnsupportedService     = errors.New("unsupported service")
+	ErrUnsupportedTransport   = errors.New("unsupported transport")
 )
