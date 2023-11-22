@@ -71,7 +71,7 @@ type CloneOptions struct {
 	Progress sideband.Progress
 	// Tags describe how the tags will be fetched from the remote repository,
 	// by default is AllTags.
-	Tags TagMode
+	Tags plumbing.TagMode
 	// InsecureSkipTLS skips ssl verify if protocol is https
 	InsecureSkipTLS bool
 	// CABundle specify additional ca bundle with system cert pool
@@ -103,8 +103,8 @@ func (o *CloneOptions) Validate() error {
 		o.ReferenceName = plumbing.HEAD
 	}
 
-	if o.Tags == InvalidTagMode {
-		o.Tags = AllTags
+	if o.Tags == plumbing.InvalidTagMode {
+		o.Tags = plumbing.AllTags
 	}
 
 	return nil
@@ -155,21 +155,6 @@ func (o *PullOptions) Validate() error {
 	return nil
 }
 
-type TagMode int
-
-const (
-	InvalidTagMode TagMode = iota
-	// TagFollowing any tag that points into the histories being fetched is also
-	// fetched. TagFollowing requires a server with `include-tag` capability
-	// in order to fetch the annotated tags objects.
-	TagFollowing
-	// AllTags fetch all tags from the remote (i.e., fetch remote tags
-	// refs/tags/* into local tags with the same name)
-	AllTags
-	//NoTags fetch no tags from the remote at all
-	NoTags
-)
-
 // FetchOptions describes how a fetch should be performed
 type FetchOptions struct {
 	// Name of the remote to fetch from. Defaults to origin.
@@ -188,7 +173,7 @@ type FetchOptions struct {
 	Progress sideband.Progress
 	// Tags describe how the tags will be fetched from the remote repository,
 	// by default is TagFollowing.
-	Tags TagMode
+	Tags plumbing.TagMode
 	// Force allows the fetch to update a local branch even when the remote
 	// branch does not descend from it.
 	Force bool
@@ -206,8 +191,8 @@ func (o *FetchOptions) Validate() error {
 		o.RemoteName = DefaultRemoteName
 	}
 
-	if o.Tags == InvalidTagMode {
-		o.Tags = TagFollowing
+	if o.Tags == plumbing.InvalidTagMode {
+		o.Tags = plumbing.TagFollowing
 	}
 
 	for _, r := range o.RefSpecs {

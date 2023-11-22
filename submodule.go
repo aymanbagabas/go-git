@@ -10,6 +10,7 @@ import (
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/fetch"
 	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
@@ -244,7 +245,7 @@ func (s *Submodule) fetchAndCheckout(
 ) error {
 	if !o.NoFetch {
 		err := r.FetchContext(ctx, &FetchOptions{Auth: o.Auth, Depth: o.Depth})
-		if err != nil && err != NoErrAlreadyUpToDate {
+		if err != nil && err != plumbing.NoErrAlreadyUpToDate {
 			return err
 		}
 	}
@@ -267,7 +268,7 @@ func (s *Submodule) fetchAndCheckout(
 				RefSpecs: []config.RefSpec{refSpec},
 				Depth:    o.Depth,
 			})
-			if err != nil && err != NoErrAlreadyUpToDate && err != ErrExactSHA1NotSupported {
+			if err != nil && err != plumbing.NoErrAlreadyUpToDate && err != fetch.ErrExactSHA1NotSupported {
 				return err
 			}
 		}

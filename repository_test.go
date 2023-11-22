@@ -273,7 +273,7 @@ func (s *RepositorySuite) TestCloneWithTags(c *C) {
 		fixtures.ByURL("https://github.com/git-fixtures/tags.git").One(),
 	)
 
-	r, err := Clone(memory.NewStorage(), nil, &CloneOptions{URL: url, Tags: NoTags})
+	r, err := Clone(memory.NewStorage(), nil, &CloneOptions{URL: url, Tags: plumbing.NoTags})
 	c.Assert(err, IsNil)
 
 	remotes, err := r.Remotes()
@@ -3316,7 +3316,7 @@ func BenchmarkPlainClone(b *testing.B) {
 		_, err := PlainClone(b.TempDir(), true, &CloneOptions{
 			URL:          "https://github.com/go-git/go-git.git",
 			Depth:        1,
-			Tags:         NoTags,
+			Tags:         plumbing.NoTags,
 			SingleBranch: true,
 		})
 		if err != nil {

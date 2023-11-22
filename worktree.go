@@ -82,7 +82,7 @@ func (w *Worktree) PullContext(ctx context.Context, o *PullOptions) error {
 	})
 
 	updated := true
-	if err == NoErrAlreadyUpToDate {
+	if err == plumbing.NoErrAlreadyUpToDate {
 		updated = false
 	} else if err != nil {
 		return err
@@ -101,7 +101,7 @@ func (w *Worktree) PullContext(ctx context.Context, o *PullOptions) error {
 		}
 
 		if !updated && headAheadOfRef {
-			return NoErrAlreadyUpToDate
+			return plumbing.NoErrAlreadyUpToDate
 		}
 
 		ff, err := isFastForward(w.r.Storer, head.Hash(), ref.Hash())

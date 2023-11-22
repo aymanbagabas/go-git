@@ -1,6 +1,13 @@
 package plumbing
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var (
+	NoErrAlreadyUpToDate = errors.New("already up-to-date")
+)
 
 type PermanentError struct {
 	Err error

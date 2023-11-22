@@ -21,6 +21,7 @@ import (
 	"github.com/go-git/go-billy/v5/util"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/internal/path_util"
+	"github.com/go-git/go-git/v5/internal/repository"
 	"github.com/go-git/go-git/v5/internal/revision"
 	"github.com/go-git/go-git/v5/internal/url"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -1059,7 +1060,7 @@ func (r *Repository) fetchAndUpdateReferences(
 
 	objsUpdated := true
 	remoteRefs, err := remote.fetch(ctx, o)
-	if err == NoErrAlreadyUpToDate {
+	if err == plumbing.NoErrAlreadyUpToDate {
 		objsUpdated = false
 	} else if err == packfile.ErrEmptyPackfile {
 		return nil, ErrFetching
@@ -1067,7 +1068,7 @@ func (r *Repository) fetchAndUpdateReferences(
 		return nil, err
 	}
 
-	resolvedRef, err := expand_ref(remoteRefs, ref)
+	resolvedRef, err := repository.ExpandRef(remoteRefs, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -1078,7 +1079,7 @@ func (r *Repository) fetchAndUpdateReferences(
 	}
 
 	if !objsUpdated && !refsUpdated {
-		return nil, NoErrAlreadyUpToDate
+		return nil, plumbing.NoErrAlreadyUpToDate
 	}
 
 	return resolvedRef, nil
@@ -1094,7 +1095,7 @@ func (r *Repository) updateReferences(spec []config.RefSpec,
 			return false, err
 		}
 		head := plumbing.NewHashReference(plumbing.HEAD, h)
-		return updateReferenceStorerIfNeeded(r.Storer, head)
+		return repository.CheckAndUpdateReferenceStorerIfNeeded(r.Storer, head, nil)
 	}
 
 	refs := []*plumbing.Reference{
@@ -1107,7 +1108,7 @@ func (r *Repository) updateReferences(spec []config.RefSpec,
 	refs = append(refs, r.calculateRemoteHeadReference(spec, resolvedRef)...)
 
 	for _, ref := range refs {
-		u, err := updateReferenceStorerIfNeeded(r.Storer, ref)
+		u, err := repository.CheckAndUpdateReferenceStorerIfNeeded(r.Storer, ref, nil)
 		if err != nil {
 			return updated, err
 		}
@@ -1141,31 +1142,6 @@ func (r *Repository) calculateRemoteHeadReference(spec []config.RefSpec,
 	}
 
 	return refs
-}
-
-func checkAndUpdateReferenceStorerIfNeeded(
-	s storer.ReferenceStorer, r, old *plumbing.Reference) (
-	updated bool, err error) {
-	p, err := s.Reference(r.Name())
-	if err != nil && err != plumbing.ErrReferenceNotFound {
-		return false, err
-	}
-
-	// we use the string method to compare references, is the easiest way
-	if err == plumbing.ErrReferenceNotFound || r.String() != p.String() {
-		if err := s.CheckAndSetReference(r, old); err != nil {
-			return false, err
-		}
-
-		return true, nil
-	}
-
-	return false, nil
-}
-
-func updateReferenceStorerIfNeeded(
-	s storer.ReferenceStorer, r *plumbing.Reference) (updated bool, err error) {
-	return checkAndUpdateReferenceStorerIfNeeded(s, r, nil)
 }
 
 // Fetch fetches references along with the objects necessary to complete
@@ -1515,23 +1491,6 @@ func (r *Repository) Worktree() (*Worktree, error) {
 	return &Worktree{r: r, Filesystem: r.wt}, nil
 }
 
-func expand_ref(s storer.ReferenceStorer, ref plumbing.ReferenceName) (*plumbing.Reference, error) {
-	// For improving troubleshooting, this preserves the error for the provided `ref`,
-	// and returns the error for that specific ref in case all parse rules fails.
-	var ret error
-	for _, rule := range plumbing.RefRevParseRules {
-		resolvedRef, err := storer.ResolveReference(s, plumbing.ReferenceName(fmt.Sprintf(rule, ref)))
-
-		if err == nil {
-			return resolvedRef, nil
-		} else if ret == nil {
-			ret = err
-		}
-	}
-
-	return nil, ret
-}
-
 // ResolveRevision resolves revision to corresponding hash. It will always
 // resolve to a commit hash, not a tree or annotated tag.
 //
@@ -1561,7 +1520,7 @@ func (r *Repository) ResolveRevision(in plumbing.Revision) (*plumbing.Hash, erro
 
 			tryHashes = append(tryHashes, r.resolveHashPrefix(string(revisionRef))...)
 
-			ref, err := expand_ref(r.Storer, plumbing.ReferenceName(revisionRef))
+			ref, err := repository.ExpandRef(r.Storer, plumbing.ReferenceName(revisionRef))
 			if err == nil {
 				tryHashes = append(tryHashes, ref.Hash())
 			}

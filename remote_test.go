@@ -15,8 +15,10 @@ import (
 
 	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/internal/repository"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/cache"
+	"github.com/go-git/go-git/v5/plumbing/fetch"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
@@ -107,7 +109,7 @@ func (s *RemoteSuite) TestFetchExactSHA1_NotSoported(c *C) {
 		},
 	})
 
-	c.Assert(err, Equals, ErrExactSHA1NotSupported)
+	c.Assert(err, Equals, fetch.ErrExactSHA1NotSupported)
 
 }
 
@@ -176,7 +178,7 @@ func (s *RemoteSuite) TestFetchToNewBranchWithAllTags(c *C) {
 	})
 
 	s.testFetch(c, r, &FetchOptions{
-		Tags: AllTags,
+		Tags: plumbing.AllTags,
 		RefSpecs: []config.RefSpec{
 			// qualified branch to unqualified branch
 			"+refs/heads/master:foo",
@@ -212,7 +214,7 @@ func (s *RemoteSuite) TestFetchNonExistentReference(c *C) {
 	})
 
 	c.Assert(err, ErrorMatches, "couldn't find remote ref.*")
-	c.Assert(errors.Is(err, NoMatchingRefSpecError{}), Equals, true)
+	c.Assert(errors.Is(err, fetch.NoMatchingRefSpecError{}), Equals, true)
 }
 
 func (s *RemoteSuite) TestFetchContext(c *C) {
@@ -253,7 +255,7 @@ func (s *RemoteSuite) TestFetchWithAllTags(c *C) {
 	})
 
 	s.testFetch(c, r, &FetchOptions{
-		Tags: AllTags,
+		Tags: plumbing.AllTags,
 		RefSpecs: []config.RefSpec{
 			config.RefSpec("+refs/heads/master:refs/remotes/origin/master"),
 		},
@@ -273,7 +275,7 @@ func (s *RemoteSuite) TestFetchWithNoTags(c *C) {
 	})
 
 	s.testFetch(c, r, &FetchOptions{
-		Tags: NoTags,
+		Tags: plumbing.NoTags,
 		RefSpecs: []config.RefSpec{
 			config.RefSpec("+refs/heads/*:refs/remotes/origin/*"),
 		},
@@ -459,7 +461,7 @@ func (s *RemoteSuite) doTestFetchNoErrAlreadyUpToDate(c *C, url string) {
 	err := r.Fetch(o)
 	c.Assert(err, IsNil)
 	err = r.Fetch(o)
-	c.Assert(err, Equals, NoErrAlreadyUpToDate)
+	c.Assert(err, Equals, plumbing.NoErrAlreadyUpToDate)
 }
 
 func (s *RemoteSuite) testFetchFastForward(c *C, sto storage.Storer) {
@@ -481,7 +483,7 @@ func (s *RemoteSuite) testFetchFastForward(c *C, sto storage.Storer) {
 			config.RefSpec("refs/heads/branch:refs/heads/master"),
 		},
 	})
-	c.Assert(err, Equals, ErrForceNeeded)
+	c.Assert(err, Equals, fetch.ErrForceNeeded)
 
 	// And that forcing it fixes the problem.
 	err = r.Fetch(&FetchOptions{
@@ -743,7 +745,7 @@ func (s *RemoteSuite) TestPushNoErrAlreadyUpToDate(c *C) {
 	err := r.Push(&PushOptions{
 		RefSpecs: []config.RefSpec{"refs/heads/*:refs/heads/*"},
 	})
-	c.Assert(err, Equals, NoErrAlreadyUpToDate)
+	c.Assert(err, Equals, plumbing.NoErrAlreadyUpToDate)
 }
 
 func (s *RemoteSuite) TestPushDeleteReference(c *C) {
@@ -1051,7 +1053,7 @@ func (s *RemoteSuite) TestPushPrune(c *C) {
 		},
 		Prune: true,
 	})
-	c.Assert(err, Equals, NoErrAlreadyUpToDate)
+	c.Assert(err, Equals, plumbing.NoErrAlreadyUpToDate)
 
 	AssertReferences(c, server, map[string]string{
 		"refs/tags/v1.0.0": tag.Hash().String(),
@@ -1234,7 +1236,7 @@ func (s *RemoteSuite) TestGetHaves(c *C) {
 		),
 	}
 
-	l, err := getHaves(localRefs, memory.NewStorage(), sto, 0)
+	l, err := repository.GetHaves(localRefs, memory.NewStorage(), sto, 0)
 	c.Assert(err, IsNil)
 	c.Assert(l, HasLen, 2)
 }
@@ -1357,7 +1359,7 @@ func (s *RemoteSuite) TestUpdateShallows(c *C) {
 
 	for _, t := range tests {
 		resp.Shallows = t.hashes
-		err = remote.updateShallow(o, resp)
+		err = repository.UpdateShallow(remote.s, o.Depth, resp.Shallows)
 		c.Assert(err, IsNil)
 
 		shallow, err := remote.s.Shallow()
@@ -1512,7 +1514,7 @@ func (s *RemoteSuite) TestFetchAfterShallowClone(c *C) {
 	repo, err := PlainClone(repoDir, false, &CloneOptions{
 		URL:           remoteUrl,
 		Depth:         1,
-		Tags:          NoTags,
+		Tags:          plumbing.NoTags,
 		SingleBranch:  true,
 		ReferenceName: "master",
 	})
@@ -1527,7 +1529,7 @@ func (s *RemoteSuite) TestFetchAfterShallowClone(c *C) {
 	c.Assert(err, IsNil)
 	s.testFetch(c, r, &FetchOptions{
 		Depth: 2,
-		Tags:  NoTags,
+		Tags:  plumbing.NoTags,
 
 		RefSpecs: []config.RefSpec{
 			"+refs/heads/master:refs/heads/master",
@@ -1547,7 +1549,7 @@ func (s *RemoteSuite) TestFetchAfterShallowClone(c *C) {
 	c.Assert(err, IsNil)
 	s.testFetch(c, r, &FetchOptions{
 		Depth: 1,
-		Tags:  NoTags,
+		Tags:  plumbing.NoTags,
 
 		RefSpecs: []config.RefSpec{
 			"+refs/heads/master:refs/heads/master",
@@ -1609,8 +1611,8 @@ func TestFetchFastForwardForCustomRef(t *testing.T) {
 	err = remote.Fetch(&FetchOptions{RefSpecs: []config.RefSpec{
 		config.RefSpec(fmt.Sprintf("%s:%s", customRef, customRef)),
 	}})
-	if !errors.Is(err, ErrForceNeeded) {
-		t.Errorf("expected %v, got %v", ErrForceNeeded, err)
+	if !errors.Is(err, fetch.ErrForceNeeded) {
+		t.Errorf("expected %v, got %v", fetch.ErrForceNeeded, err)
 	}
 
 	// 6. Fetch with force
