@@ -8,6 +8,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/pktline"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
+	"github.com/go-git/go-git/v5/storage"
 )
 
 // UploadPackRequest represents a upload-pack request.
@@ -15,6 +16,8 @@ import (
 type UploadPackRequest struct {
 	UploadRequest
 	UploadHaves
+
+	Storer storage.Storer
 }
 
 // NewUploadPackRequest creates a new UploadPackRequest and returns a pointer.

@@ -1118,6 +1118,7 @@ func (r *Remote) newUploadPackRequest(o *FetchOptions,
 	ar *packp.AdvRefs) (*packp.UploadPackRequest, error) {
 
 	req := packp.NewUploadPackRequestFromCapabilities(ar.Capabilities)
+	req.Storer = r.s
 
 	if o.Depth != 0 {
 		req.Depth = packp.DepthCommits(o.Depth)
