@@ -9,6 +9,58 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/format/pktline"
 )
 
+func BenchmarkScannerOld(b *testing.B) {
+	sections, err := sectionsExample(2, 4)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	var maxp bytes.Buffer
+	if _, err := pktline.WritePacketString(&maxp, strings.Repeat("a", pktline.MaxPayloadSize)); err != nil {
+		b.Fatal(err)
+	}
+
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "empty",
+			input: "",
+		},
+		{
+			name:  "one message",
+			input: "000ahello\n",
+		},
+		{
+			name:  "two messages",
+			input: "000ahello\n000bworld!\n",
+		},
+		{
+			name:  "sections",
+			input: sections.String(),
+		},
+		{
+			name:  "max packet size",
+			input: maxp.String(),
+		},
+	}
+	for _, tc := range cases {
+		r := strings.NewReader("")
+		s := pktline.NewScannerOld(r)
+		b.Run(tc.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				r.Reset(tc.input)
+				for s.Scan() {
+					if err := s.Err(); err != nil {
+						b.Error(err)
+					}
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkScanner(b *testing.B) {
 	sections, err := sectionsExample(2, 4)
 	if err != nil {
