@@ -46,8 +46,7 @@ func applyHeaders(
 	req.Header.Add("Host", ep.Host) // host:port
 
 	if useSmart {
-		req.Header.Add("Accept", fmt.Sprintf("application/x-%s-result", service))
-		req.Header.Add("Content-Type", fmt.Sprintf("application/x-%s-request", service))
+		req.Header.Add("Accept", fmt.Sprintf("application/x-%s-result", service)) // smart protocol
 	}
 
 	if protocol != "" {
@@ -354,43 +353,73 @@ func (s *session) Handshake(ctx context.Context, service transport.Service, para
 	defer ioutil.CheckClose(res.Body, &err)
 
 	rd := bufio.NewReader(res.Body)
-	_, prefix, err := pktline.PeekLine(rd)
-	if err != nil {
-		return nil, err
-	}
-
-	// Consumes the prefix
-	//  # service=<service>\n
-	//  0000
-	if bytes.HasPrefix(prefix, []byte("# service=")) {
-		var reply packp.SmartReply
-		err := reply.Decode(rd)
+	ar := packp.NewAdvRefs()
+	if s.IsSmart() {
+		_, prefix, err := pktline.PeekLine(rd)
 		if err != nil {
 			return nil, err
 		}
 
-		if reply.Service != service.String() {
-			return nil, fmt.Errorf("unexpected service name: %w", transport.ErrInvalidResponse)
-		}
-	}
+		// Consumes the prefix
+		//  # service=<service>\n
+		//  0000
+		if bytes.HasPrefix(prefix, []byte("# service=")) {
+			var reply packp.SmartReply
+			err := reply.Decode(rd)
+			if err != nil {
+				return nil, err
+			}
 
-	s.version, _ = transport.DiscoverVersion(rd)
-	switch s.version {
-	case protocol.VersionV2:
-		return nil, transport.ErrUnsupportedVersion
-	case protocol.VersionV1:
-		// Read the version line
-		fallthrough
-	case protocol.VersionV0:
-	}
-
-	ar := packp.NewAdvRefs()
-	if err = ar.Decode(rd); err != nil {
-		if err == packp.ErrEmptyAdvRefs {
-			err = transport.ErrEmptyRemoteRepository
+			if reply.Service != service.String() {
+				return nil, fmt.Errorf("unexpected service name: %w", transport.ErrInvalidResponse)
+			}
 		}
 
-		return nil, err
+		s.version, _ = transport.DiscoverVersion(rd)
+		switch s.version {
+		case protocol.VersionV2:
+			return nil, transport.ErrUnsupportedVersion
+		case protocol.VersionV1:
+			// Read the version line
+			fallthrough
+		case protocol.VersionV0:
+		}
+
+		if err = ar.Decode(rd); err != nil {
+			if err == packp.ErrEmptyAdvRefs {
+				err = transport.ErrEmptyRemoteRepository
+			}
+
+			return nil, err
+		}
+	} else {
+		var infoRefs packp.InfoRefs
+		if err := infoRefs.Decode(rd); err != nil {
+			return nil, err
+		}
+
+		ar.References = infoRefs.References
+		ar.Peeled = infoRefs.Peeled
+
+		walker := newFetchWalker(s, ctx, nil)
+		head, err := walker.getHead()
+		if err != nil {
+			return nil, err
+		}
+
+		var hash plumbing.Hash
+		switch head.Type() {
+		case plumbing.SymbolicReference:
+			for name, refHash := range ar.References {
+				if name == head.Target().String() {
+					hash = refHash
+					break
+				}
+			}
+		default:
+			hash = head.Hash()
+		}
+		ar.Head = &hash
 	}
 
 	// Git 2.41+ returns a zero-id plus capabilities when an empty
@@ -422,6 +451,10 @@ func (*session) IsStatelessRPC() bool {
 
 // Fetch implements transport.Connection.
 func (s *session) Fetch(ctx context.Context, req *transport.FetchRequest) (err error) {
+	if !s.IsSmart() {
+		return s.fetchDumb(ctx, req)
+	}
+
 	rwc := newRequester(ctx, s, transport.UploadPackService)
 
 	// XXX: packfile will be populated and accessible once rwc.Close() is
