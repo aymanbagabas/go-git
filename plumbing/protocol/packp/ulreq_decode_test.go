@@ -58,14 +58,14 @@ func (s *UlReqDecodeSuite) TestWantOK(c *C) {
 		"want 1111111111111111111111111111111111111111",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	c.Assert(ur.Wants, DeepEquals, []plumbing.Hash{
 		plumbing.NewHash("1111111111111111111111111111111111111111"),
 	})
 }
 
-func (s *UlReqDecodeSuite) testDecodeOK(c *C, payloads []string, expectedHaveCalls int) (*UploadRequest, []plumbing.Hash) {
+func (s *UlReqDecodeSuite) testDecodeOK(c *C, payloads []string) *UploadRequest {
 	var buf bytes.Buffer
 	for _, p := range payloads {
 		if p == "" {
@@ -81,16 +81,7 @@ func (s *UlReqDecodeSuite) testDecodeOK(c *C, payloads []string, expectedHaveCal
 
 	c.Assert(d.Decode(ur), IsNil)
 
-	haves := []plumbing.Hash{}
-	nbCall := 0
-	for h := range ur.HavesUR {
-		nbCall++
-		haves = append(haves, h.Haves...)
-	}
-
-	c.Assert(nbCall, Equals, expectedHaveCalls)
-
-	return ur, haves
+	return ur
 }
 
 func (s *UlReqDecodeSuite) TestWantWithCapabilities(c *C) {
@@ -98,7 +89,7 @@ func (s *UlReqDecodeSuite) TestWantWithCapabilities(c *C) {
 		"want 1111111111111111111111111111111111111111 ofs-delta multi_ack",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 	c.Assert(ur.Wants, DeepEquals, []plumbing.Hash{
 		plumbing.NewHash("1111111111111111111111111111111111111111"),
 	})
@@ -115,7 +106,7 @@ func (s *UlReqDecodeSuite) TestManyWantsNoCapabilities(c *C) {
 		"want 2222222222222222222222222222222222222222",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	expected := []plumbing.Hash{
 		plumbing.NewHash("1111111111111111111111111111111111111111"),
@@ -171,7 +162,7 @@ func (s *UlReqDecodeSuite) TestManyWantsWithCapabilities(c *C) {
 		"want 2222222222222222222222222222222222222222",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	expected := []plumbing.Hash{
 		plumbing.NewHash("1111111111111111111111111111111111111111"),
@@ -194,7 +185,7 @@ func (s *UlReqDecodeSuite) TestSingleShallowSingleWant(c *C) {
 		"shallow aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	expectedWants := []plumbing.Hash{
 		plumbing.NewHash("3333333333333333333333333333333333333333"),
@@ -220,7 +211,7 @@ func (s *UlReqDecodeSuite) TestSingleShallowManyWants(c *C) {
 		"shallow aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	expectedWants := []plumbing.Hash{
 		plumbing.NewHash("1111111111111111111111111111111111111111"),
@@ -251,7 +242,7 @@ func (s *UlReqDecodeSuite) TestManyShallowSingleWant(c *C) {
 		"shallow dddddddddddddddddddddddddddddddddddddddd",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	expectedWants := []plumbing.Hash{
 		plumbing.NewHash("3333333333333333333333333333333333333333"),
@@ -285,7 +276,7 @@ func (s *UlReqDecodeSuite) TestManyShallowManyWants(c *C) {
 		"shallow dddddddddddddddddddddddddddddddddddddddd",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	expectedWants := []plumbing.Hash{
 		plumbing.NewHash("1111111111111111111111111111111111111111"),
@@ -404,7 +395,7 @@ func (s *UlReqDecodeSuite) TestDeepenCommits(c *C) {
 		"deepen 1234",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	c.Assert(ur.Depth, FitsTypeOf, DepthCommits(0))
 	commits, ok := ur.Depth.(DepthCommits)
@@ -418,7 +409,7 @@ func (s *UlReqDecodeSuite) TestDeepenCommitsInfiniteImplicit(c *C) {
 		"deepen 0",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	c.Assert(ur.Depth, FitsTypeOf, DepthCommits(0))
 	commits, ok := ur.Depth.(DepthCommits)
@@ -431,7 +422,7 @@ func (s *UlReqDecodeSuite) TestDeepenCommitsInfiniteExplicit(c *C) {
 		"want 3333333333333333333333333333333333333333 ofs-delta multi_ack",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	c.Assert(ur.Depth, FitsTypeOf, DepthCommits(0))
 	commits, ok := ur.Depth.(DepthCommits)
@@ -465,7 +456,7 @@ func (s *UlReqDecodeSuite) TestDeepenSince(c *C) {
 		"deepen-since 1420167845", // 2015-01-02T03:04:05+00:00
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	expected := time.Date(2015, time.January, 2, 3, 4, 5, 0, time.UTC)
 
@@ -482,7 +473,7 @@ func (s *UlReqDecodeSuite) TestDeepenReference(c *C) {
 		"deepen-not refs/heads/master",
 		"",
 	}
-	ur, _ := s.testDecodeOK(c, payloads, 0)
+	ur := s.testDecodeOK(c, payloads)
 
 	expected := "refs/heads/master"
 
@@ -504,12 +495,8 @@ func (s *UlReqDecodeSuite) TestAll(c *C) {
 		"shallow dddddddddddddddddddddddddddddddddddddddd",
 		"deepen 1234",
 		"",
-		"have 5555555555555555555555555555555555555555",
-		"",
-		"have 6666666666666666666666666666666666666666",
-		"done",
 	}
-	ur, haves := s.testDecodeOK(c, payloads, 2)
+	ur := s.testDecodeOK(c, payloads)
 
 	expectedWants := []plumbing.Hash{
 		plumbing.NewHash("1111111111111111111111111111111111111111"),
@@ -517,18 +504,11 @@ func (s *UlReqDecodeSuite) TestAll(c *C) {
 		plumbing.NewHash("3333333333333333333333333333333333333333"),
 		plumbing.NewHash("4444444444444444444444444444444444444444"),
 	}
-	expectedHave := []plumbing.Hash{
-		plumbing.NewHash("5555555555555555555555555555555555555555"),
-		plumbing.NewHash("6666666666666666666666666666666666666666"),
-	}
-	sort.Sort(byHash(expectedHave))
-	sort.Sort(byHash(haves))
-	c.Assert(haves, DeepEquals, expectedHave)
-	c.Assert(ur.Capabilities.Supports(capability.OFSDelta), Equals, true)
-	c.Assert(ur.Capabilities.Supports(capability.MultiACK), Equals, true)
 	sort.Sort(byHash(expectedWants))
 	sort.Sort(byHash(ur.Wants))
 	c.Assert(ur.Wants, DeepEquals, expectedWants)
+	c.Assert(ur.Capabilities.Supports(capability.OFSDelta), Equals, true)
+	c.Assert(ur.Capabilities.Supports(capability.MultiACK), Equals, true)
 
 	expectedShallows := []plumbing.Hash{
 		plumbing.NewHash("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
