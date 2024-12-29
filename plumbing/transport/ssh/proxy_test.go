@@ -53,14 +53,14 @@ func (s *ProxySuite) TestCommand(c *C) {
 	}()
 
 	s.u.port = sshListener.Addr().(*net.TCPAddr).Port
-	s.u.base, err = os.MkdirTemp(c.MkDir(), fmt.Sprintf("go-git-ssh-%d", s.u.port))
+	s.u.base, err = os.MkdirTemp(os.TempDir(), fmt.Sprintf("go-git-ssh-%d", s.u.port))
 	c.Assert(err, IsNil)
 
 	DefaultAuthBuilder = func(user string) (AuthMethod, error) {
 		return &Password{User: user}, nil
 	}
 
-	ep := s.u.prepareRepository(c, fixtures.Basic().One(), "basic.git")
+	ep, _ := s.u.prepareRepository(c, fixtures.Basic().One(), "basic.git")
 	c.Assert(err, IsNil)
 	ep.Proxy = transport.ProxyOptions{
 		URL:      socksProxyAddr,
@@ -73,7 +73,7 @@ func (s *ProxySuite) TestCommand(c *C) {
 			HostKeyCallback: stdssh.InsecureIgnoreHostKey(),
 		},
 	}
-	_, err = runner.Command(transport.UploadPackServiceName, ep, nil)
+	_, err = runner.Command(context.TODO(), transport.UploadPackService.String(), ep, nil)
 	c.Assert(err, IsNil)
 	proxyUsed := atomic.LoadInt32(&socksProxiedRequests) > 0
 	c.Assert(proxyUsed, Equals, true)
