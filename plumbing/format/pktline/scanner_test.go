@@ -21,7 +21,7 @@ func TestSuiteScanner(t *testing.T) {
 
 func (s *SuiteScanner) TestInvalid() {
 	for _, test := range [...]string{
-		"0001", "0002", "0003", "0004",
+		"0003",
 		"0001asdfsadf", "0004foo",
 		"fff5", "ffff",
 		"gorka",
@@ -31,7 +31,8 @@ func (s *SuiteScanner) TestInvalid() {
 	} {
 		r := strings.NewReader(test)
 		sc := pktline.NewScanner(r)
-		_ = sc.Scan()
+		for sc.Scan() {
+		}
 		s.ErrorContains(sc.Err(), pktline.ErrInvalidPktLen.Error(),
 			fmt.Sprintf("data = %q", test))
 	}
@@ -47,7 +48,7 @@ func (s *SuiteScanner) TestDecodeOversizePktLines() {
 		r := strings.NewReader(test)
 		sc := pktline.NewScanner(r)
 		_ = sc.Scan()
-		s.NoError(sc.Err())
+		s.ErrorIs(sc.Err(), pktline.ErrInvalidPktLen)
 	}
 }
 
@@ -61,11 +62,11 @@ func (s *SuiteScanner) TestValidPktSizes() {
 		r := strings.NewReader(test)
 		sc := pktline.NewScanner(r)
 		hasPayload := sc.Scan()
-		obtained := sc.Bytes()
+		obtained := fmt.Sprintf("%04x%s", sc.Len(), sc.Bytes())
 
 		s.True(hasPayload)
 		s.NoError(sc.Err())
-		s.Equal([]byte(test), obtained)
+		s.Equal(strings.ToLower(test), obtained)
 	}
 }
 
@@ -205,7 +206,7 @@ func (s *SuiteScanner) TestReadSomeSections() {
 	sectionCounter := 0
 	lineCounter := 0
 	for sc.Scan() {
-		if len(sc.Bytes()) == 0 {
+		if sc.Len() == pktline.Flush {
 			sectionCounter++
 		}
 		lineCounter++
