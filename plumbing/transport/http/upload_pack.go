@@ -17,7 +17,7 @@ import (
 )
 
 type upSession struct {
-	*session
+	*HTTPSession
 }
 
 func newUploadPackSession(c *client, ep *transport.Endpoint, auth transport.AuthMethod) (transport.UploadPackSession, error) {
@@ -26,11 +26,11 @@ func newUploadPackSession(c *client, ep *transport.Endpoint, auth transport.Auth
 }
 
 func (s *upSession) AdvertisedReferences() (*packp.AdvRefs, error) {
-	return advertisedReferences(context.TODO(), s.session, transport.UploadPackServiceName)
+	return advertisedReferences(context.TODO(), s.HTTPSession, transport.UploadPackServiceName)
 }
 
 func (s *upSession) AdvertisedReferencesContext(ctx context.Context) (*packp.AdvRefs, error) {
-	return advertisedReferences(ctx, s.session, transport.UploadPackServiceName)
+	return advertisedReferences(ctx, s.HTTPSession, transport.UploadPackServiceName)
 }
 
 func (s *upSession) UploadPack(

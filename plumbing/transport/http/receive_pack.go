@@ -16,7 +16,7 @@ import (
 )
 
 type rpSession struct {
-	*session
+	*HTTPSession
 }
 
 func newReceivePackSession(c *client, ep *transport.Endpoint, auth transport.AuthMethod) (transport.ReceivePackSession, error) {
@@ -25,15 +25,16 @@ func newReceivePackSession(c *client, ep *transport.Endpoint, auth transport.Aut
 }
 
 func (s *rpSession) AdvertisedReferences() (*packp.AdvRefs, error) {
-	return advertisedReferences(context.TODO(), s.session, transport.ReceivePackServiceName)
+	return advertisedReferences(context.TODO(), s.HTTPSession, transport.ReceivePackServiceName)
 }
 
 func (s *rpSession) AdvertisedReferencesContext(ctx context.Context) (*packp.AdvRefs, error) {
-	return advertisedReferences(ctx, s.session, transport.ReceivePackServiceName)
+	return advertisedReferences(ctx, s.HTTPSession, transport.ReceivePackServiceName)
 }
 
 func (s *rpSession) ReceivePack(ctx context.Context, req *packp.ReferenceUpdateRequest) (
-	*packp.ReportStatus, error) {
+	*packp.ReportStatus, error,
+) {
 	url := fmt.Sprintf(
 		"%s/%s",
 		s.endpoint.String(), transport.ReceivePackServiceName,
@@ -82,7 +83,6 @@ func (s *rpSession) ReceivePack(ctx context.Context, req *packp.ReferenceUpdateR
 func (s *rpSession) doRequest(
 	ctx context.Context, method, url string, content *bytes.Buffer,
 ) (*http.Response, error) {
-
 	var body io.Reader
 	if content != nil {
 		body = content
