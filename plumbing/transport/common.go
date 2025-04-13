@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"regexp"
+	"strings"
 
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/protocol"
@@ -51,6 +52,20 @@ type RemoteError struct {
 // Error implements the error interface.
 func (e *RemoteError) Error() string {
 	return e.Reason
+}
+
+// String returns the error as a string prefixing each line with "remote: ".
+func (e *RemoteError) String() string {
+	if e.Reason == "" {
+		return ""
+	}
+	var str strings.Builder
+	for _, line := range strings.Split(e.Reason, "\n") {
+		str.WriteString("remote: ")
+		str.WriteString(line)
+		str.WriteByte('\n')
+	}
+	return str.String()
 }
 
 // NewRemoteError creates a new RemoteError.
