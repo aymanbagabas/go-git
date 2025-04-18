@@ -60,7 +60,7 @@ type HandlerOptions struct {
 	Prefix string
 }
 
-// NewHandler returns a Git HTTP handler that serves git repositories over
+// GitHandler returns a Git HTTP handler that serves git repositories over
 // HTTP.
 //
 // It supports serving repositories using both the Smart-HTTP and the Dumb-HTTP
@@ -69,7 +69,7 @@ type HandlerOptions struct {
 // repositories that wish to be server using the Dumb-HTTP protocol must update
 // the server info files. This can be done by using
 // [transport.UpdateServerInfo] before serving the repository.
-func NewHandler(loader transport.Loader, opts *HandlerOptions) http.HandlerFunc {
+func GitHandler(loader transport.Loader, opts *HandlerOptions) http.HandlerFunc {
 	if loader == nil {
 		loader = DefaultLoader
 	}
