@@ -10,7 +10,6 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
-	formatcfg "github.com/go-git/go-git/v6/plumbing/format/config"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/sideband"
@@ -425,6 +424,13 @@ type ResetOptions struct {
 	// Files, if not empty will constrain the reseting the index to only files
 	// specified in this list.
 	Files []string
+
+	// SparseDirs specifies which directories should be checked out.
+	// Directories not listed here will not appear in the worktree.
+	SparseDirs []string
+
+	// SkipSparseDirValidation will skip the validation for SparseDirs.
+	SkipSparseDirValidation bool
 }
 
 // Validate validates the fields and sets the default values.
@@ -454,6 +460,7 @@ const (
 	LogOrderDFSPost
 	LogOrderBSF
 	LogOrderCommitterTime
+	LogOrderDFSPostFirstParent
 )
 
 // LogOptions describes how a log action should be performed.
@@ -789,16 +796,6 @@ type PlainOpenOptions struct {
 
 // Validate validates the fields and sets the default values.
 func (o *PlainOpenOptions) Validate() error { return nil }
-
-type PlainInitOptions struct {
-	InitOptions
-	// Determines if the repository will have a worktree (non-bare) or not (bare).
-	Bare         bool
-	ObjectFormat formatcfg.ObjectFormat
-}
-
-// Validate validates the fields and sets the default values.
-func (o *PlainInitOptions) Validate() error { return nil }
 
 var ErrNoRestorePaths = errors.New("you must specify path(s) to restore")
 

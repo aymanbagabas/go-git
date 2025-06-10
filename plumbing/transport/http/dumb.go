@@ -181,7 +181,7 @@ func (r *fetchWalker) getHead() (ref *plumbing.Reference, err error) {
 
 	defer func() {
 		if res.Body == nil {
-				return
+			return
 		}
 		bodyErr := res.Body.Close()
 		if err == nil {
@@ -380,7 +380,7 @@ LOOP:
 					return fmt.Errorf("error opening index file: %w", err)
 				}
 
-				idx := idxfile.NewMemoryIndex()
+				idx := idxfile.NewMemoryIndex(packHash.Size())
 				d := idxfile.NewDecoder(idxFile)
 				if err := d.Decode(idx); err != nil {
 					_ = idxFile.Close()

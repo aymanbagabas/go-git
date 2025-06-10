@@ -3,7 +3,6 @@ package git
 import (
 	"bytes"
 	"context"
-	"crypto"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -27,7 +26,6 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/cache"
 	formatcfg "github.com/go-git/go-git/v6/plumbing/format/config"
 	"github.com/go-git/go-git/v6/plumbing/format/packfile"
-	"github.com/go-git/go-git/v6/plumbing/hash"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/plumbing/storer"
 	"github.com/go-git/go-git/v6/storage"
@@ -77,35 +75,64 @@ type Repository struct {
 	wt billy.Filesystem
 }
 
-type InitOptions struct {
-	// The default branch (e.g. "refs/heads/master")
-	DefaultBranch plumbing.ReferenceName
+type initOptions struct {
+	defaultBranch plumbing.ReferenceName
+	workTree      billy.Filesystem
+	objectFormat  formatcfg.ObjectFormat
+}
+
+func newInitOptions() initOptions {
+	return initOptions{
+		defaultBranch: plumbing.Master,
+		workTree:      nil,
+		objectFormat:  formatcfg.SHA1,
+	}
+}
+
+type InitOption func(*initOptions)
+
+// WithDefaultBranch sets the default branch for the new repo (e.g. "refs/heads/master").
+func WithDefaultBranch(b plumbing.ReferenceName) InitOption {
+	return func(o *initOptions) {
+		o.defaultBranch = b
+	}
+}
+
+// WithWorkTree sets the worktree filesystem for the repo. If not used, or a `nil` is
+// passed as argument, will result in a bare repository.
+func WithWorkTree(worktree billy.Filesystem) InitOption {
+	return func(o *initOptions) {
+		o.workTree = worktree
+	}
+}
+
+// WithObjectFormat sets the repository's object format.
+func WithObjectFormat(of formatcfg.ObjectFormat) InitOption {
+	return func(o *initOptions) {
+		o.objectFormat = of
+	}
 }
 
 // Init creates an empty git repository, based on the given Storer and worktree.
 // The worktree Filesystem is optional, if nil a bare repository is created. If
 // the given storer is not empty ErrRepositoryAlreadyExists is returned
-func Init(s storage.Storer, worktree billy.Filesystem) (*Repository, error) {
-	options := InitOptions{
-		DefaultBranch: plumbing.Master,
+func Init(s storage.Storer, opts ...InitOption) (*Repository, error) {
+	options := newInitOptions()
+	for _, oFn := range opts {
+		if oFn != nil {
+			oFn(&options)
+		}
 	}
-	return InitWithOptions(s, worktree, options)
-}
 
-func InitWithOptions(s storage.Storer, worktree billy.Filesystem, options InitOptions) (*Repository, error) {
 	if err := initStorer(s); err != nil {
 		return nil, err
 	}
 
-	if options.DefaultBranch == "" {
-		options.DefaultBranch = plumbing.Master
-	}
-
-	if err := options.DefaultBranch.Validate(); err != nil {
+	if err := options.defaultBranch.Validate(); err != nil {
 		return nil, err
 	}
 
-	r := newRepository(s, worktree)
+	r := newRepository(s, options.workTree)
 	_, err := r.Reference(plumbing.HEAD, false)
 	switch err {
 	case plumbing.ErrReferenceNotFound:
@@ -115,17 +142,17 @@ func InitWithOptions(s storage.Storer, worktree billy.Filesystem, options InitOp
 		return nil, err
 	}
 
-	h := plumbing.NewSymbolicReference(plumbing.HEAD, options.DefaultBranch)
+	h := plumbing.NewSymbolicReference(plumbing.HEAD, options.defaultBranch)
 	if err := s.SetReference(h); err != nil {
 		return nil, err
 	}
 
-	if worktree == nil {
+	if options.workTree == nil {
 		_ = r.setIsBare(true)
 		return r, nil
 	}
 
-	return r, setWorktreeAndStoragePaths(r, worktree)
+	return r, setWorktreeAndStoragePaths(r, options.workTree)
 }
 
 func initStorer(s storer.Storer) error {
@@ -241,7 +268,9 @@ func CloneContext(
 		trace.Performance.Printf("performance: %.9f s: git command: git clone %s", time.Since(start).Seconds(), url)
 	}()
 
-	r, err := Init(s, worktree)
+	r, err := Init(s,
+		WithWorkTree(worktree),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -252,29 +281,32 @@ func CloneContext(
 // PlainInit create an empty git repository at the given path. isBare defines
 // if the repository will have worktree (non-bare) or not (bare), if the path
 // is not empty ErrRepositoryAlreadyExists is returned.
-func PlainInit(path string, isBare bool) (*Repository, error) {
-	return PlainInitWithOptions(path, &PlainInitOptions{
-		Bare: isBare,
-	})
-}
+func PlainInit(path string, isBare bool, options ...InitOption) (*Repository, error) {
+	var wt, dot billy.Filesystem
+	var initFn func(s *filesystem.Storage) (*Repository, error)
 
-func PlainInitWithOptions(path string, opts *PlainInitOptions) (*Repository, error) {
-	if opts == nil {
-		opts = &PlainInitOptions{}
+	o := newInitOptions()
+	for _, oFn := range options {
+		oFn(&o)
 	}
 
-	var wt, dot billy.Filesystem
-
-	if opts.Bare {
+	if isBare {
 		dot = osfs.New(path, osfs.WithBoundOS())
+		initFn = func(s *filesystem.Storage) (*Repository, error) {
+			return Init(s, options...)
+		}
 	} else {
 		wt = osfs.New(path, osfs.WithBoundOS())
 		dot, _ = wt.Chroot(GitDirName)
+		initFn = func(s *filesystem.Storage) (*Repository, error) {
+			oo := []InitOption{WithWorkTree(wt)}
+			oo = append(oo, options...)
+			return Init(s, oo...)
+		}
 	}
-
 	s := filesystem.NewStorage(dot, cache.NewObjectLRUDefault())
+	r, err := initFn(s)
 
-	r, err := InitWithOptions(s, wt, opts.InitOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -284,13 +316,9 @@ func PlainInitWithOptions(path string, opts *PlainInitOptions) (*Repository, err
 		return nil, err
 	}
 
-	if opts.ObjectFormat != "" {
-		if opts.ObjectFormat == formatcfg.SHA256 && hash.CryptoType != crypto.SHA256 {
-			return nil, ErrSHA256NotSupported
-		}
-
+	if o.objectFormat != formatcfg.SHA1 {
 		cfg.Core.RepositoryFormatVersion = formatcfg.Version_1
-		cfg.Extensions.ObjectFormat = opts.ObjectFormat
+		cfg.Extensions.ObjectFormat = o.objectFormat
 	}
 
 	err = r.Storer.SetConfig(cfg)
@@ -436,6 +464,7 @@ func dotGitCommonDirectory(fs billy.Filesystem) (commonDir billy.Filesystem, err
 	if err != nil {
 		return nil, err
 	}
+	defer ioutil.CheckClose(f, &err)
 
 	b, err := io.ReadAll(f)
 	if err != nil {
@@ -1074,7 +1103,6 @@ func (r *Repository) updateRemoteConfigIfNeeded(o *CloneOptions, c *config.Remot
 func (r *Repository) fetchAndUpdateReferences(
 	ctx context.Context, o *FetchOptions, ref plumbing.ReferenceName,
 ) (*plumbing.Reference, error) {
-
 	if err := o.Validate(); err != nil {
 		return nil, err
 	}
@@ -1112,8 +1140,8 @@ func (r *Repository) fetchAndUpdateReferences(
 }
 
 func (r *Repository) updateReferences(spec []config.RefSpec,
-	resolvedRef *plumbing.Reference) (updated bool, err error) {
-
+	resolvedRef *plumbing.Reference,
+) (updated bool, err error) {
 	if !resolvedRef.Name().IsBranch() {
 		// Detached HEAD mode
 		h, err := r.resolveToCommitHash(resolvedRef.Hash())
@@ -1148,8 +1176,8 @@ func (r *Repository) updateReferences(spec []config.RefSpec,
 }
 
 func (r *Repository) calculateRemoteHeadReference(spec []config.RefSpec,
-	resolvedHead *plumbing.Reference) []*plumbing.Reference {
-
+	resolvedHead *plumbing.Reference,
+) []*plumbing.Reference {
 	var refs []*plumbing.Reference
 
 	// Create resolved HEAD reference with remote prefix if it does not
@@ -1172,7 +1200,8 @@ func (r *Repository) calculateRemoteHeadReference(spec []config.RefSpec,
 
 func checkAndUpdateReferenceStorerIfNeeded(
 	s storer.ReferenceStorer, r, old *plumbing.Reference) (
-	updated bool, err error) {
+	updated bool, err error,
+) {
 	p, err := s.Reference(r.Name())
 	if err != nil && err != plumbing.ErrReferenceNotFound {
 		return false, err
@@ -1191,7 +1220,8 @@ func checkAndUpdateReferenceStorerIfNeeded(
 }
 
 func updateReferenceStorerIfNeeded(
-	s storer.ReferenceStorer, r *plumbing.Reference) (updated bool, err error) {
+	s storer.ReferenceStorer, r *plumbing.Reference,
+) (updated bool, err error) {
 	return checkAndUpdateReferenceStorerIfNeeded(s, r, nil)
 }
 
@@ -1356,6 +1386,10 @@ func commitIterFunc(order LogOrder) func(c *object.Commit) object.CommitIter {
 		return func(c *object.Commit) object.CommitIter {
 			return object.NewCommitIterCTime(c, nil, nil)
 		}
+	case LogOrderDFSPostFirstParent:
+		return func(c *object.Commit) object.CommitIter {
+			return object.NewCommitPostorderIterFirstParent(c, nil)
+		}
 	}
 	return nil
 }
@@ -1518,8 +1552,8 @@ func (r *Repository) Head() (*plumbing.Reference, error) {
 // Reference returns the reference for a given reference name. If resolved is
 // true, any symbolic reference will be resolved.
 func (r *Repository) Reference(name plumbing.ReferenceName, resolved bool) (
-	*plumbing.Reference, error) {
-
+	*plumbing.Reference, error,
+) {
 	if resolved {
 		return storer.ResolveReference(r.Storer, name)
 	}
@@ -1572,7 +1606,6 @@ func (r *Repository) ResolveRevision(in plumbing.Revision) (*plumbing.Hash, erro
 
 	p := revision.NewParserFromString(rev)
 	items, err := p.Parse()
-
 	if err != nil {
 		return nil, err
 	}
@@ -1636,7 +1669,6 @@ func (r *Repository) ResolveRevision(in plumbing.Revision) (*plumbing.Hash, erro
 			iter := commit.Parents()
 
 			c, err := iter.Next()
-
 			if err != nil {
 				return &plumbing.ZeroHash, err
 			}
@@ -1648,7 +1680,6 @@ func (r *Repository) ResolveRevision(in plumbing.Revision) (*plumbing.Hash, erro
 			}
 
 			c, err = iter.Next()
-
 			if err != nil {
 				return &plumbing.ZeroHash, err
 			}
@@ -1657,7 +1688,6 @@ func (r *Repository) ResolveRevision(in plumbing.Revision) (*plumbing.Hash, erro
 		case revision.TildePath:
 			for i := 0; i < item.Depth; i++ {
 				c, err := commit.Parents().Next()
-
 				if err != nil {
 					return &plumbing.ZeroHash, err
 				}
@@ -1714,14 +1744,11 @@ func (r *Repository) resolveHashPrefix(hashStr string) []plumbing.Hash {
 	if hashStr == "" {
 		return nil
 	}
-	if len(hashStr) == len(plumbing.ZeroHash)*2 {
-		// Only a full hash is possible.
-		hexb, err := hex.DecodeString(hashStr)
-		if err != nil {
+	if len(hashStr) == plumbing.ZeroHash.HexSize() {
+		h, ok := plumbing.FromHex(hashStr)
+		if !ok {
 			return nil
 		}
-		var h plumbing.Hash
-		copy(h[:], hexb)
 		return []plumbing.Hash{h}
 	}
 
@@ -1895,7 +1922,7 @@ func expandPartialHash(st storer.EncodedObjectStorer, prefix []byte) (hashes []p
 	}
 	iter.ForEach(func(obj plumbing.EncodedObject) error {
 		h := obj.Hash()
-		if bytes.HasPrefix(h[:], prefix) {
+		if h.HasPrefix(prefix) {
 			hashes = append(hashes, h)
 		}
 		return nil

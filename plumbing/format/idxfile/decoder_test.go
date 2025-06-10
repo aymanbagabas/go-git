@@ -3,7 +3,6 @@ package idxfile_test
 import (
 	"bytes"
 	"encoding/base64"
-	"fmt"
 	"io"
 	"testing"
 
@@ -11,16 +10,11 @@ import (
 	. "github.com/go-git/go-git/v6/plumbing/format/idxfile"
 	"github.com/stretchr/testify/suite"
 
-	fixtures "github.com/go-git/go-git-fixtures/v4"
+	fixtures "github.com/go-git/go-git-fixtures/v5"
 )
-
-type IdxfileFixtureSuite struct {
-	fixtures.Suite
-}
 
 type IdxfileSuite struct {
 	suite.Suite
-	IdxfileFixtureSuite
 }
 
 func TestIdxfileSuite(t *testing.T) {
@@ -51,8 +45,8 @@ func (s *IdxfileSuite) TestDecode() {
 	s.NoError(err)
 	s.Equal(uint32(3645019190), crc32)
 
-	s.Equal("fb794f1ec720b9bc8e43257451bd99c4be6fa1c9", fmt.Sprintf("%x", idx.IdxChecksum))
-	s.Equal(f.PackfileHash, fmt.Sprintf("%x", idx.PackfileChecksum))
+	s.Equal("fb794f1ec720b9bc8e43257451bd99c4be6fa1c9", idx.IdxChecksum.String())
+	s.Equal(f.PackfileHash, idx.PackfileChecksum.String())
 }
 
 func (s *IdxfileSuite) TestDecode64bitsOffsets() {
@@ -127,8 +121,6 @@ func BenchmarkDecode(b *testing.B) {
 	if err != nil {
 		b.Errorf("unexpected error reading idx file: %s", err)
 	}
-
-	defer fixtures.Clean()
 
 	for i := 0; i < b.N; i++ {
 		f := bytes.NewBuffer(fixture)

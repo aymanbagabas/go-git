@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	fixtures "github.com/go-git/go-git-fixtures/v4"
+	fixtures "github.com/go-git/go-git-fixtures/v5"
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/cache"
@@ -25,6 +25,7 @@ import (
 	"github.com/go-git/go-git/v6/storage/filesystem"
 	"github.com/go-git/go-git/v6/storage/memory"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/go-git/go-billy/v5"
@@ -41,7 +42,6 @@ func defaultTestCommitOptions() *CommitOptions {
 }
 
 type WorktreeSuite struct {
-	suite.Suite
 	BaseSuite
 }
 
@@ -56,7 +56,7 @@ func (s *WorktreeSuite) SetupTest() {
 
 func (s *WorktreeSuite) TestPullCheckout() {
 	fs := memfs.New()
-	r, _ := Init(memory.NewStorage(), fs)
+	r, _ := Init(memory.NewStorage(), WithWorkTree(fs))
 	r.CreateRemote(&config.RemoteConfig{
 		Name: DefaultRemoteName,
 		URLs: []string{s.GetBasicLocalRepositoryURL()},
@@ -74,28 +74,17 @@ func (s *WorktreeSuite) TestPullCheckout() {
 }
 
 func (s *WorktreeSuite) TestPullFastForward() {
-	url, err := os.MkdirTemp("", "")
-	s.NoError(err)
+	url := s.GetLocalRepositoryURL(fixtures.Basic().ByTag("worktree").One())
 
-	path := fixtures.Basic().ByTag("worktree").One().Worktree().Root()
+	server, err := PlainClone(s.T().TempDir(), &CloneOptions{URL: url})
+	s.Require().NoError(err)
 
-	server, err := PlainClone(url, &CloneOptions{
-		URL: path,
-	})
-	s.NoError(err)
-
-	dir, err := os.MkdirTemp("", "")
-	s.NoError(err)
-
-	r, err := PlainClone(dir, &CloneOptions{
-		URL: url,
-	})
-	s.NoError(err)
+	r, err := Clone(memory.NewStorage(), memfs.New(), &CloneOptions{URL: server.wt.Root()})
+	s.Require().NoError(err)
 
 	w, err := server.Worktree()
 	s.NoError(err)
-	err = os.WriteFile(filepath.Join(url, "foo"), []byte("foo"), 0o755)
-	s.NoError(err)
+	s.NoError(util.WriteFile(w.Filesystem, "foo", []byte("foo"), 0o755))
 	w.Add("foo")
 	hash, err := w.Commit("foo", &CommitOptions{Author: defaultSignature()})
 	s.NoError(err)
@@ -112,36 +101,24 @@ func (s *WorktreeSuite) TestPullFastForward() {
 }
 
 func (s *WorktreeSuite) TestPullNonFastForward() {
-	url, err := os.MkdirTemp("", "")
-	s.NoError(err)
+	url := s.GetLocalRepositoryURL(fixtures.Basic().ByTag("worktree").One())
 
-	path := fixtures.Basic().ByTag("worktree").One().Worktree().Root()
+	server, err := PlainClone(s.T().TempDir(), &CloneOptions{URL: url})
+	s.Require().NoError(err)
 
-	server, err := PlainClone(url, &CloneOptions{
-		URL: path,
-	})
-	s.NoError(err)
-
-	dir, err := os.MkdirTemp("", "")
-	s.NoError(err)
-
-	r, err := PlainClone(dir, &CloneOptions{
-		URL: url,
-	})
-	s.NoError(err)
+	r, err := Clone(memory.NewStorage(), memfs.New(), &CloneOptions{URL: server.wt.Root()})
+	s.Require().NoError(err)
 
 	w, err := server.Worktree()
 	s.NoError(err)
-	err = os.WriteFile(filepath.Join(url, "foo"), []byte("foo"), 0o755)
-	s.NoError(err)
+	s.NoError(util.WriteFile(w.Filesystem, "foo", []byte("foo"), 0o755))
 	w.Add("foo")
 	_, err = w.Commit("foo", &CommitOptions{Author: defaultSignature()})
 	s.NoError(err)
 
 	w, err = r.Worktree()
 	s.NoError(err)
-	err = os.WriteFile(filepath.Join(dir, "bar"), []byte("bar"), 0o755)
-	s.NoError(err)
+	s.NoError(util.WriteFile(w.Filesystem, "bar", []byte("bar"), 0o755))
 	w.Add("bar")
 	_, err = w.Commit("bar", &CommitOptions{Author: defaultSignature()})
 	s.NoError(err)
@@ -151,7 +128,7 @@ func (s *WorktreeSuite) TestPullNonFastForward() {
 }
 
 func (s *WorktreeSuite) TestPullUpdateReferencesIfNeeded() {
-	r, _ := Init(memory.NewStorage(), memfs.New())
+	r, _ := Init(memory.NewStorage(), WithWorkTree(memfs.New()))
 	r.CreateRemote(&config.RemoteConfig{
 		Name: DefaultRemoteName,
 		URLs: []string{s.GetBasicLocalRepositoryURL()},
@@ -182,7 +159,7 @@ func (s *WorktreeSuite) TestPullUpdateReferencesIfNeeded() {
 }
 
 func (s *WorktreeSuite) TestPullInSingleBranch() {
-	r, _ := Init(memory.NewStorage(), memfs.New())
+	r, _ := Init(memory.NewStorage(), WithWorkTree(memfs.New()))
 	err := r.clone(context.Background(), &CloneOptions{
 		URL:          s.GetBasicLocalRepositoryURL(),
 		SingleBranch: true,
@@ -212,7 +189,7 @@ func (s *WorktreeSuite) TestPullProgress() {
 		"Local repositories use both server and client transport implementations. " +
 		"See upload-pack.go for details.")
 
-	r, _ := Init(memory.NewStorage(), memfs.New())
+	r, _ := Init(memory.NewStorage(), WithWorkTree(memfs.New()))
 
 	r.CreateRemote(&config.RemoteConfig{
 		Name: DefaultRemoteName,
@@ -236,24 +213,21 @@ func (s *WorktreeSuite) TestPullProgressWithRecursion() {
 		s.T().Skip("skipping test in short mode.")
 	}
 
-	path := fixtures.ByTag("submodule").One().Worktree().Root()
+	path := s.GetLocalRepositoryURL(fixtures.ByTag("submodule").One())
 
-	dir, err := os.MkdirTemp("", "")
-	s.NoError(err)
-
-	r, _ := PlainInit(dir, false)
+	r, _ := Init(memory.NewStorage(), WithWorkTree(memfs.New()))
 	r.CreateRemote(&config.RemoteConfig{
 		Name: DefaultRemoteName,
 		URLs: []string{path},
 	})
 
 	w, err := r.Worktree()
-	s.NoError(err)
+	s.Require().NoError(err)
 
 	err = w.Pull(&PullOptions{
 		RecurseSubmodules: DefaultSubmoduleRecursionDepth,
 	})
-	s.NoError(err)
+	s.Require().NoError(err)
 
 	cfg, err := r.Config()
 	s.NoError(err)
@@ -261,13 +235,13 @@ func (s *WorktreeSuite) TestPullProgressWithRecursion() {
 }
 
 func (s *RepositorySuite) TestPullAdd() {
-	path := fixtures.Basic().ByTag("worktree").One().Worktree().Root()
+	url := s.GetLocalRepositoryURL(fixtures.Basic().ByTag("worktree").One())
 
-	r, err := Clone(memory.NewStorage(), memfs.New(), &CloneOptions{
-		URL: filepath.Join(path, ".git"),
-	})
+	server, err := PlainClone(s.T().TempDir(), &CloneOptions{URL: url})
+	s.Require().NoError(err)
 
-	s.NoError(err)
+	r, err := Clone(memory.NewStorage(), memfs.New(), &CloneOptions{URL: server.wt.Root()})
+	s.Require().NoError(err)
 
 	storage := r.Storer.(*memory.Storage)
 	s.Len(storage.Objects, 28)
@@ -276,7 +250,7 @@ func (s *RepositorySuite) TestPullAdd() {
 	s.NoError(err)
 	s.Equal("6ecf0ef2c2dffb796033e5a02219af86ec6584e5", branch.Hash().String())
 
-	ExecuteOnPath(s.T(), path,
+	ExecuteOnPath(s.T(), server.wt.Root(),
 		"touch foo",
 		"git add foo",
 		"git commit --no-gpg-sign -m foo foo",
@@ -297,14 +271,11 @@ func (s *RepositorySuite) TestPullAdd() {
 }
 
 func (s *WorktreeSuite) TestPullAlreadyUptodate() {
-	path := fixtures.Basic().ByTag("worktree").One().Worktree().Root()
+	url := s.GetLocalRepositoryURL(fixtures.Basic().ByTag("worktree").One())
 
 	fs := memfs.New()
-	r, err := Clone(memory.NewStorage(), fs, &CloneOptions{
-		URL: filepath.Join(path, ".git"),
-	})
-
-	s.NoError(err)
+	r, err := Clone(memory.NewStorage(), fs, &CloneOptions{URL: url})
+	s.Require().NoError(err)
 
 	w, err := r.Worktree()
 	s.NoError(err)
@@ -324,7 +295,7 @@ func (s *WorktreeSuite) TestPullDepth() {
 		"server-side implementation. See transport/upload_pack.go and" +
 		"packfile/encoder.go")
 	r, err := Clone(memory.NewStorage(), memfs.New(), &CloneOptions{
-		URL:   fixtures.Basic().One().URL,
+		URL:   s.GetBasicLocalRepositoryURL(),
 		Depth: 1,
 	})
 
@@ -531,36 +502,28 @@ func (s *WorktreeSuite) TestFilenameNormalization() {
 		s.T().Skip("windows paths may contain non utf-8 sequences")
 	}
 
-	url, err := os.MkdirTemp("", "")
-	s.NoError(err)
+	url := s.GetLocalRepositoryURL(fixtures.Basic().ByTag("worktree").One())
 
-	path := fixtures.Basic().ByTag("worktree").One().Worktree().Root()
-
-	server, err := PlainClone(url, &CloneOptions{
-		URL: path,
-	})
-	s.NoError(err)
+	server, err := PlainClone(s.T().TempDir(), &CloneOptions{URL: url})
+	s.Require().NoError(err)
 
 	filename := "페"
 
 	w, err := server.Worktree()
-	s.NoError(err)
+	s.Require().NoError(err)
 
-	writeFile := func(path string) {
-		err := util.WriteFile(w.Filesystem, path, []byte("foo"), 0o755)
-		s.NoError(err)
+	writeFile := func(fs billy.Filesystem, path string) {
+		s.Require().NoError(util.WriteFile(fs, path, []byte("foo"), 0o755))
 	}
 
-	writeFile(filename)
+	writeFile(w.Filesystem, filename)
 	origHash, err := w.Add(filename)
 	s.NoError(err)
 	_, err = w.Commit("foo", &CommitOptions{Author: defaultSignature()})
 	s.NoError(err)
 
-	r, err := Clone(memory.NewStorage(), memfs.New(), &CloneOptions{
-		URL: url,
-	})
-	s.NoError(err)
+	r, err := Clone(memory.NewStorage(), memfs.New(), &CloneOptions{URL: server.wt.Root()})
+	s.Require().NoError(err)
 
 	w, err = r.Worktree()
 	s.NoError(err)
@@ -573,7 +536,7 @@ func (s *WorktreeSuite) TestFilenameNormalization() {
 	s.NoError(err)
 
 	modFilename := norm.NFKD.String(filename)
-	writeFile(modFilename)
+	writeFile(w.Filesystem, modFilename)
 
 	_, err = w.Add(filename)
 	s.NoError(err)
@@ -589,7 +552,7 @@ func (s *WorktreeSuite) TestFilenameNormalization() {
 	s.False(status.IsClean())
 
 	// Revert back the deletion of the first file.
-	writeFile(filename)
+	writeFile(w.Filesystem, filename)
 	_, err = w.Add(filename)
 	s.NoError(err)
 
@@ -769,6 +732,39 @@ func (s *WorktreeSuite) TestCheckoutBranch() {
 
 	status, err := w.Status()
 	s.NoError(err)
+	s.True(status.IsClean())
+}
+
+func (s *WorktreeSuite) TestCheckoutBranchUntracked() {
+	w := &Worktree{
+		r:          s.Repository,
+		Filesystem: memfs.New(),
+	}
+
+	uf, err := w.Filesystem.Create("untracked_file")
+	s.NoError(err)
+	_, err = uf.Write([]byte("don't delete me"))
+	s.NoError(err)
+
+	err = w.Checkout(&CheckoutOptions{
+		Branch: "refs/heads/branch",
+	})
+	s.NoError(err)
+
+	head, err := w.r.Head()
+	s.NoError(err)
+	s.Equal("refs/heads/branch", head.Name().String())
+
+	status, err := w.Status()
+	s.NoError(err)
+	// The untracked file should still be there, so it's not clean
+	s.False(status.IsClean())
+	s.True(status.IsUntracked("untracked_file"))
+	err = w.Filesystem.Remove("untracked_file")
+	s.NoError(err)
+	status, err = w.Status()
+	s.NoError(err)
+	// After deleting the untracked file it should now be clean
 	s.True(status.IsClean())
 }
 
@@ -994,7 +990,7 @@ func (s *WorktreeSuite) TestStatusEmpty() {
 	fs := memfs.New()
 	storage := memory.NewStorage()
 
-	r, err := Init(storage, fs)
+	r, err := Init(storage, WithWorkTree(fs))
 	s.NoError(err)
 
 	w, err := r.Worktree()
@@ -1010,7 +1006,7 @@ func (s *WorktreeSuite) TestStatusCheckedInBeforeIgnored() {
 	fs := memfs.New()
 	storage := memory.NewStorage()
 
-	r, err := Init(storage, fs)
+	r, err := Init(storage, WithWorkTree(fs))
 	s.NoError(err)
 
 	w, err := r.Worktree()
@@ -1059,7 +1055,7 @@ func (s *WorktreeSuite) TestStatusEmptyDirty() {
 
 	storage := memory.NewStorage()
 
-	r, err := Init(storage, fs)
+	r, err := Init(storage, WithWorkTree(fs))
 	s.NoError(err)
 
 	w, err := r.Worktree()
@@ -1146,7 +1142,16 @@ func (s *WorktreeSuite) TestResetWithUntracked() {
 
 	status, err := w.Status()
 	s.NoError(err)
-	s.True(status.IsClean())
+	for file, st := range status {
+		if file == "foo" {
+			s.Equal(Untracked, st.Worktree)
+			s.Equal(Untracked, st.Staging)
+			continue
+		}
+		if st.Worktree != Unmodified || st.Staging != Unmodified {
+			s.Fail("file %s not unmodified", file)
+		}
+	}
 }
 
 func (s *WorktreeSuite) TestResetSoft() {
@@ -1352,7 +1357,7 @@ func (s *WorktreeSuite) TestResetSparsely() {
 
 	sparseResetDirs := []string{"php"}
 
-	err := w.ResetSparsely(&ResetOptions{Mode: HardReset}, sparseResetDirs)
+	err := w.Reset(&ResetOptions{Mode: HardReset, SparseDirs: sparseResetDirs})
 	s.NoError(err)
 
 	files, err := fs.ReadDir("/")
@@ -1364,6 +1369,47 @@ func (s *WorktreeSuite) TestResetSparsely() {
 	s.NoError(err)
 	s.Len(files, 1)
 	s.Equal("crappy.php", files[0].Name())
+}
+
+func (s *WorktreeSuite) TestResetSparselyInvalidDir() {
+	fs := memfs.New()
+	w := &Worktree{
+		r:          s.Repository,
+		Filesystem: fs,
+	}
+
+	tests := []struct {
+		name    string
+		opts    ResetOptions
+		wantErr bool
+	}{
+		{
+			name:    "non existent directory",
+			opts:    ResetOptions{SparseDirs: []string{"non-existent"}},
+			wantErr: true,
+		},
+		{
+			name:    "exists but is not directory",
+			opts:    ResetOptions{SparseDirs: []string{"php/crappy.php"}},
+			wantErr: true,
+		},
+		{
+			name:    "skip validation for non existent directory",
+			opts:    ResetOptions{SparseDirs: []string{"non-existent"}, SkipSparseDirValidation: true},
+			wantErr: false,
+		},
+	}
+
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			err := w.Reset(&test.opts)
+			if test.wantErr {
+				s.Require().ErrorIs(err, ErrSparseResetDirectoryNotFound)
+				return
+			}
+			s.Require().NoError(err)
+		})
+	}
 }
 
 func (s *WorktreeSuite) TestStatusAfterCheckout() {
@@ -1511,12 +1557,15 @@ func (s *WorktreeSuite) TestStatusDeleted() {
 }
 
 func (s *WorktreeSuite) TestSubmodule() {
-	path := fixtures.ByTag("submodule").One().Worktree().Root()
-	r, err := PlainOpen(path)
-	s.NoError(err)
+	fs := fixtures.ByTag("submodule").One().Worktree()
+	gitdir, err := fs.Chroot(GitDirName)
+	s.Require().NoError(err)
+
+	r, err := Open(filesystem.NewStorage(gitdir, cache.NewObjectLRUDefault()), fs)
+	s.Require().NoError(err)
 
 	w, err := r.Worktree()
-	s.NoError(err)
+	s.Require().NoError(err)
 
 	m, err := w.Submodule("basic")
 	s.NoError(err)
@@ -1525,12 +1574,10 @@ func (s *WorktreeSuite) TestSubmodule() {
 }
 
 func (s *WorktreeSuite) TestSubmodules() {
-	path := fixtures.ByTag("submodule").One().Worktree().Root()
-	r, err := PlainOpen(path)
-	s.NoError(err)
+	r := s.NewRepository(fixtures.ByTag("submodule").One())
 
 	w, err := r.Worktree()
-	s.NoError(err)
+	s.Require().NoError(err)
 
 	l, err := w.Submodules()
 	s.NoError(err)
@@ -1938,7 +1985,7 @@ func (s *WorktreeSuite) TestAddDirectory() {
 }
 
 func (s *WorktreeSuite) TestAddDirectoryErrorNotFound() {
-	r, _ := Init(memory.NewStorage(), memfs.New())
+	r, _ := Init(memory.NewStorage(), WithWorkTree(memfs.New()))
 	w, _ := r.Worktree()
 
 	h, err := w.Add("foo")
@@ -2105,7 +2152,7 @@ func (s *WorktreeSuite) TestAddFilenameStartingWithDot() {
 }
 
 func (s *WorktreeSuite) TestAddGlobErrorNoMatches() {
-	r, _ := Init(memory.NewStorage(), memfs.New())
+	r, _ := Init(memory.NewStorage(), WithWorkTree(memfs.New()))
 	w, _ := r.Worktree()
 
 	err := w.AddGlob("foo")
@@ -2502,13 +2549,13 @@ func (s *WorktreeSuite) TestMoveToExistent() {
 }
 
 func (s *WorktreeSuite) TestClean() {
-	fs := fixtures.ByTag("dirty").One().Worktree()
+	fs := fixtures.ByTag("dirty").One().Worktree(fixtures.WithTargetDir(s.T().TempDir))
 
 	// Open the repo.
 	fs, err := fs.Chroot("repo")
 	s.NoError(err)
 	r, err := PlainOpen(fs.Root())
-	s.NoError(err)
+	s.Require().NoError(err)
 
 	wt, err := r.Worktree()
 	s.NoError(err)
@@ -2548,7 +2595,7 @@ func (s *WorktreeSuite) TestClean() {
 func (s *WorktreeSuite) TestCleanBare() {
 	storer := memory.NewStorage()
 
-	r, err := Init(storer, nil)
+	r, err := Init(storer)
 	s.NoError(err)
 	s.NotNil(r)
 
@@ -2584,20 +2631,20 @@ func TestAlternatesRepo(t *testing.T) {
 	// Open 1st repo.
 	rep1fs, err := fs.Chroot("rep1")
 	assert.NoError(t, err)
-	rep1, err := PlainOpen(rep1fs.Root())
-	assert.NoError(t, err)
+	d, _ := rep1fs.Chroot(GitDirName)
+	rep1, err := Open(filesystem.NewStorage(d, cache.NewObjectLRUDefault()), nil)
+	require.NoError(t, err)
 
 	// Open 2nd repo.
 	rep2fs, err := fs.Chroot("rep2")
 	assert.NoError(t, err)
-	d, _ := rep2fs.Chroot(GitDirName)
+	d, _ = rep2fs.Chroot(GitDirName)
 	storer := filesystem.NewStorageWithOptions(d,
 		cache.NewObjectLRUDefault(), filesystem.Options{
 			AlternatesFS: fs,
 		})
 	rep2, err := Open(storer, rep2fs)
-
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Get the HEAD commit from the main repo.
 	h, err := rep1.Head()
@@ -2800,18 +2847,13 @@ func (s *WorktreeSuite) TestGrep() {
 		},
 	}
 
-	path := fixtures.Basic().ByTag("worktree").One().Worktree().Root()
+	url := s.GetLocalRepositoryURL(fixtures.Basic().ByTag("worktree").One())
 
-	dir, err := os.MkdirTemp("", "")
-	s.NoError(err)
-
-	server, err := PlainClone(dir, &CloneOptions{
-		URL: path,
-	})
-	s.NoError(err)
+	server, err := Clone(memory.NewStorage(), memfs.New(), &CloneOptions{URL: url})
+	s.Require().NoError(err)
 
 	w, err := server.Worktree()
-	s.NoError(err)
+	s.Require().NoError(err)
 
 	for _, tc := range cases {
 		gr, err := w.Grep(&tc.options)
@@ -2884,16 +2926,10 @@ func (s *WorktreeSuite) TestGrepBare() {
 		},
 	}
 
-	path := fixtures.Basic().ByTag("worktree").One().Worktree().Root()
+	url := s.GetLocalRepositoryURL(fixtures.Basic().ByTag("worktree").One())
 
-	dir, err := os.MkdirTemp("", "")
-	s.NoError(err)
-
-	r, err := PlainClone(dir, &CloneOptions{
-		URL:  path,
-		Bare: true,
-	})
-	s.NoError(err)
+	r, err := Clone(memory.NewStorage(), nil, &CloneOptions{URL: url, Bare: true})
+	s.Require().NoError(err)
 
 	for _, tc := range cases {
 		gr, err := r.Grep(&tc.options)
@@ -3052,14 +3088,14 @@ func (s *WorktreeSuite) TestAddAndCommitEmpty() {
 }
 
 func (s *WorktreeSuite) TestLinkedWorktree() {
-	fs := fixtures.ByTag("linked-worktree").One().Worktree()
+	fs := fixtures.ByTag("linked-worktree").One().Worktree(fixtures.WithTargetDir(s.T().TempDir))
 
 	// Open main repo.
 	{
 		fs, err := fs.Chroot("main")
-		s.NoError(err)
+		s.Require().NoError(err)
 		repo, err := PlainOpenWithOptions(fs.Root(), &PlainOpenOptions{EnableDotGitCommonDir: true})
-		s.NoError(err)
+		s.Require().NoError(err)
 
 		wt, err := repo.Worktree()
 		s.NoError(err)
@@ -3076,9 +3112,9 @@ func (s *WorktreeSuite) TestLinkedWorktree() {
 	// Open linked-worktree #1.
 	{
 		fs, err := fs.Chroot("linked-worktree-1")
-		s.NoError(err)
+		s.Require().NoError(err)
 		repo, err := PlainOpenWithOptions(fs.Root(), &PlainOpenOptions{EnableDotGitCommonDir: true})
-		s.NoError(err)
+		s.Require().NoError(err)
 
 		wt, err := repo.Worktree()
 		s.NoError(err)
@@ -3098,9 +3134,9 @@ func (s *WorktreeSuite) TestLinkedWorktree() {
 	// Open linked-worktree #2.
 	{
 		fs, err := fs.Chroot("linked-worktree-2")
-		s.NoError(err)
+		s.Require().NoError(err)
 		repo, err := PlainOpenWithOptions(fs.Root(), &PlainOpenOptions{EnableDotGitCommonDir: true})
-		s.NoError(err)
+		s.Require().NoError(err)
 
 		wt, err := repo.Worktree()
 		s.NoError(err)
@@ -3120,9 +3156,53 @@ func (s *WorktreeSuite) TestLinkedWorktree() {
 	// Open linked-worktree #2.
 	{
 		fs, err := fs.Chroot("linked-worktree-invalid-commondir")
-		s.NoError(err)
+		s.Require().NoError(err)
 		_, err = PlainOpenWithOptions(fs.Root(), &PlainOpenOptions{EnableDotGitCommonDir: true})
 		s.ErrorIs(err, ErrRepositoryIncomplete)
+	}
+}
+
+func TestTreeContainsDirs(t *testing.T) {
+	tree := &object.Tree{
+		Entries: []object.TreeEntry{
+			{Name: "foo", Mode: filemode.Dir},
+			{Name: "bar", Mode: filemode.Dir},
+			{Name: "baz", Mode: filemode.Dir},
+			{Name: "this-is-regular", Mode: filemode.Regular},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		dirs     []string
+		expected bool
+	}{
+		{
+			name:     "example",
+			dirs:     []string{"foo", "baz"},
+			expected: true,
+		},
+		{
+			name:     "empty directories",
+			dirs:     []string{},
+			expected: false,
+		},
+		{
+			name:     "non existent directory",
+			dirs:     []string{"foobarbaz"},
+			expected: false,
+		},
+		{
+			name:     "exists but is not directory",
+			dirs:     []string{"this-is-regular"},
+			expected: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expected, treeContainsDirs(tree, test.dirs))
+		})
 	}
 }
 
