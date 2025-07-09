@@ -58,6 +58,38 @@ func NewRemoteError(reason string) error {
 	return &RemoteError{Reason: reason}
 }
 
+// Conn represents a Git protocol connection.
+type Conn interface {
+	// Read reads data from the connection.
+	Read(p []byte) (n int, err error)
+
+	// Write writes data to the connection.
+	Write(p []byte) (n int, err error)
+
+	// Close closes the connection.
+	Close() error
+
+	// StatelessRPC indicates whether the connection is a half-duplex connection
+	// and should operate in half-duplex mode i.e. performs a single read-write
+	// cycle. This fits with the HTTP POST request process where session may
+	// read the request, write a response, and exit.
+	StatelessRPC() bool
+}
+
+// Pusher represents a transport that can push objects to a remote via a
+// send-pack command.
+type Pusher interface {
+	// Push pushes objects to the remote.
+	Push(ctx context.Context, req *PushRequest) error
+}
+
+// Fetcher represents a transport that can fetch objects from a remote via a
+// fetch-pack command.
+type Fetcher interface {
+	// Fetch fetches objects from the remote.
+	Fetch(ctx context.Context, req *FetchRequest) error
+}
+
 // Connection represents a session endpoint connection.
 type Connection interface {
 	// Close closes the connection.
@@ -157,7 +189,7 @@ type Commander interface {
 	// error should be returned if the endpoint is not supported or the
 	// command cannot be created (e.g. binary does not exist, connection
 	// cannot be established).
-	Command(ctx context.Context, cmd string, ep *Endpoint, auth AuthMethod, params ...string) (Command, error)
+	Command(ctx context.Context, cmd string, params ...string) Command
 }
 
 // Command is used for a single command execution.

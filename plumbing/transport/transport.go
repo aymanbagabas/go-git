@@ -14,6 +14,7 @@ package transport
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -25,7 +26,6 @@ import (
 	giturl "github.com/go-git/go-git/v6/internal/url"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/protocol"
-	"github.com/go-git/go-git/v6/storage"
 )
 
 var (
@@ -43,8 +43,9 @@ var (
 // Transport can initiate git-upload-pack and git-receive-pack processes.
 // It is implemented both by the client and the server, making this a RPC.
 type Transport interface {
-	// NewSession returns a new session for an endpoint.
-	NewSession(storage.Storer, *Endpoint, AuthMethod) (Session, error)
+	// Connect creates a new connection for the given endpoint, authentication
+	// method, and command.
+	Connect(ctx context.Context, ep *Endpoint, auth AuthMethod, cmd Cmd) (Conn, error)
 
 	// SupportedProtocols returns a list of supported Git protocol versions by
 	// the transport client.

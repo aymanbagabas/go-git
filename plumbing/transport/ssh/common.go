@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v6/plumbing/transport"
+	"github.com/go-git/go-git/v6/storage"
 	"github.com/go-git/go-git/v6/utils/trace"
 
 	"github.com/kevinburke/ssh_config"
@@ -49,9 +50,15 @@ const DefaultPort = 22
 
 type runner struct {
 	config *ssh.ClientConfig
+	ep     *transport.Endpoint
+	auth   transport.AuthMethod
 }
 
-func (r *runner) Command(ctx context.Context, cmd string, ep *transport.Endpoint, auth transport.AuthMethod, params ...string) (transport.Command, error) {
+func (r *runner) NewSession(st storage.Storer, ep *transport.Endpoint, auth transport.AuthMethod) (*transport.Session, error) {
+	sess, err := transport.NewPackSession(st, ep, auth, r)
+}
+
+func (r *runner) Command(ctx context.Context, cmd string, params ...string) transport.Command {
 	c := &command{command: cmd, endpoint: ep, config: r.config}
 	if auth != nil {
 		if err := c.setAuth(auth); err != nil {
