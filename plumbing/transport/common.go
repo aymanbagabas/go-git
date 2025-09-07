@@ -58,39 +58,12 @@ func NewRemoteError(reason string) error {
 	return &RemoteError{Reason: reason}
 }
 
-// Connection represents a session endpoint connection.
-type Connection interface {
-	// Close closes the connection.
-	Close() error
-
-	// Capabilities returns the list of capabilities supported by the server.
-	Capabilities() *capability.List
-
-	// Version returns the Git protocol version the server supports.
-	Version() protocol.Version
-
-	// StatelessRPC indicates that the connection is a half-duplex connection
-	// and should operate in half-duplex mode i.e. performs a single read-write
-	// cycle. This fits with the HTTP POST request process where session may
-	// read the request, write a response, and exit.
-	StatelessRPC() bool
-
-	// GetRemoteRefs returns the references advertised by the remote.
-	// Using protocol v0 or v1, this returns the references advertised by the
-	// remote during the handshake. Using protocol v2, this runs the ls-refs
-	// command on the remote.
-	// This will error if the session is not already established using
-	// Handshake.
-	GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference, error)
-
-	// Fetch sends a fetch-pack request to the server.
-	Fetch(ctx context.Context, req *FetchRequest) error
-
-	// Push sends a send-pack request to the server.
-	Push(ctx context.Context, req *PushRequest) error
+// Conn represents a session endpoint connection.
+type Conn interface {
+	io.ReadWriteCloser
 }
 
-var _ io.Closer = Connection(nil)
+var _ io.Closer = Conn(nil)
 
 // FetchRequest contains the parameters for a fetch-pack request.
 // This is used during the pack negotiation phase of the fetch operation.
@@ -146,7 +119,36 @@ type Session interface {
 	// already connected.
 	// Params are the optional extra parameters to be sent to the server. Use
 	// this to send the protocol version of the client and any other extra parameters.
-	Handshake(ctx context.Context, service Service, params ...string) (Connection, error)
+	Handshake(ctx context.Context, service Service, params ...string) (Conn, error)
+
+	// Close closes the session and any underlying resources.
+	Close() error
+
+	// Capabilities returns the list of capabilities supported by the server.
+	Capabilities() *capability.List
+
+	// Version returns the Git protocol version the server supports.
+	Version() protocol.Version
+
+	// StatelessRPC indicates that the connection is a half-duplex connection
+	// and should operate in half-duplex mode i.e. performs a single read-write
+	// cycle. This fits with the HTTP POST request process where session may
+	// read the request, write a response, and exit.
+	StatelessRPC() bool
+
+	// GetRemoteRefs returns the references advertised by the remote.
+	// Using protocol v0 or v1, this returns the references advertised by the
+	// remote during the handshake. Using protocol v2, this runs the ls-refs
+	// command on the remote.
+	// This will error if the session is not already established using
+	// Handshake.
+	GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference, error)
+
+	// Fetch sends a fetch-pack request to the server.
+	Fetch(ctx context.Context, req *FetchRequest) error
+
+	// Push sends a send-pack request to the server.
+	Push(ctx context.Context, req *PushRequest) error
 }
 
 // Commander creates Command instances. This is the main entry point for

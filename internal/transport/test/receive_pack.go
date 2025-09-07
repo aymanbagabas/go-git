@@ -39,10 +39,10 @@ func (s *ReceivePackSuite) TestAdvertisedReferencesEmpty() {
 	r, err := s.Client.NewSession(s.EmptyStorer, s.EmptyEndpoint, s.EmptyAuth)
 	s.Require().NoError(err)
 
-	conn, err := r.Handshake(context.TODO(), transport.ReceivePackService)
+	_, err = r.Handshake(context.TODO(), transport.ReceivePackService)
 	s.Require().NoError(err)
-	defer func() { s.Require().Nil(conn.Close()) }()
-	refs, err := conn.GetRemoteRefs(context.TODO())
+	defer func() { s.Require().Nil(r.Close()) }()
+	refs, err := r.GetRemoteRefs(context.TODO())
 	s.Require().NoError(err)
 	s.Require().Len(refs, 0)
 }
@@ -59,15 +59,15 @@ func (s *ReceivePackSuite) TestCallAdvertisedReferenceTwice() {
 	r, err := s.Client.NewSession(s.Storer, s.Endpoint, s.EmptyAuth)
 	s.Require().NoError(err)
 
-	conn, err := r.Handshake(context.TODO(), transport.ReceivePackService)
+	_, err = r.Handshake(context.TODO(), transport.ReceivePackService)
 	s.Require().NoError(err)
-	defer func() { s.Require().Nil(conn.Close()) }()
+	defer func() { s.Require().Nil(r.Close()) }()
 
-	refs1, err := conn.GetRemoteRefs(context.TODO())
+	refs1, err := r.GetRemoteRefs(context.TODO())
 	s.Require().NoError(err)
 	s.Require().NotNil(refs1)
 
-	refs2, err := conn.GetRemoteRefs(context.TODO())
+	refs2, err := r.GetRemoteRefs(context.TODO())
 	s.Require().NoError(err)
 	s.Require().Equal(refs1, refs2)
 }
@@ -76,11 +76,11 @@ func (s *ReceivePackSuite) TestDefaultBranch() {
 	r, err := s.Client.NewSession(s.Storer, s.Endpoint, s.EmptyAuth)
 	s.Require().NoError(err)
 
-	conn, err := r.Handshake(context.TODO(), transport.ReceivePackService)
+	_, err = r.Handshake(context.TODO(), transport.ReceivePackService)
 	s.Require().NoError(err)
-	defer func() { s.Require().Nil(conn.Close()) }()
+	defer func() { s.Require().Nil(r.Close()) }()
 
-	refs, err := conn.GetRemoteRefs(context.TODO())
+	refs, err := r.GetRemoteRefs(context.TODO())
 	s.Require().NoError(err)
 	ok := false
 	var ref *plumbing.Reference
@@ -99,10 +99,10 @@ func (s *ReceivePackSuite) TestCapabilities() {
 	r, err := s.Client.NewSession(s.Storer, s.Endpoint, s.EmptyAuth)
 	s.Require().NoError(err)
 
-	conn, err := r.Handshake(context.TODO(), transport.ReceivePackService)
+	_, err = r.Handshake(context.TODO(), transport.ReceivePackService)
 	s.Require().NoError(err)
-	defer func() { s.Require().Nil(conn.Close()) }()
-	s.Require().Len(conn.Capabilities().Get("agent"), 1)
+	defer func() { s.Require().Nil(r.Close()) }()
+	s.Require().Len(r.Capabilities().Get("agent"), 1)
 }
 
 func (s *ReceivePackSuite) TestFullSendPackOnEmpty() {
@@ -129,14 +129,14 @@ func (s *ReceivePackSuite) TestSendPackWithContext() {
 	r, err := s.Client.NewSession(s.EmptyStorer, s.EmptyEndpoint, s.EmptyAuth)
 	s.Require().NoError(err)
 
-	conn, err := r.Handshake(context.TODO(), transport.ReceivePackService)
+	_, err = r.Handshake(context.TODO(), transport.ReceivePackService)
 	s.Require().NoError(err)
-	defer func() { s.Require().Nil(conn.Close()) }()
+	defer func() { s.Require().Nil(r.Close()) }()
 
 	ctx, close := context.WithCancel(context.TODO())
 	close()
 
-	err = conn.Push(ctx, req)
+	err = r.Push(ctx, req)
 	s.Require().NotNil(err)
 }
 
@@ -255,12 +255,12 @@ func (s *ReceivePackSuite) receivePackNoCheck(ep *transport.Endpoint,
 	r, err := s.Client.NewSession(s.EmptyStorer, ep, s.EmptyAuth)
 	s.Require().NoError(err, comment)
 
-	conn, err := r.Handshake(ctx, transport.ReceivePackService)
+	_, err = r.Handshake(ctx, transport.ReceivePackService)
 	s.Require().NoError(err, comment)
-	defer func() { s.Require().NoError(conn.Close()) }()
+	defer func() { s.Require().NoError(r.Close()) }()
 
 	if callAdvertisedReferences {
-		info, err := conn.GetRemoteRefs(ctx)
+		info, err := r.GetRemoteRefs(ctx)
 		s.Require().NoError(err, comment)
 		s.Require().NotNil(info, comment)
 	}
@@ -282,7 +282,7 @@ func (s *ReceivePackSuite) receivePackNoCheck(ep *transport.Endpoint,
 		}
 	}
 
-	return conn.Push(ctx, req)
+	return r.Push(ctx, req)
 }
 
 func (s *ReceivePackSuite) receivePack(ep *transport.Endpoint,
@@ -322,9 +322,9 @@ func (s *ReceivePackSuite) checkRemoteReference(ep *transport.Endpoint,
 	ctx := context.TODO()
 	r, err := s.Client.NewSession(s.EmptyStorer, ep, s.EmptyAuth)
 	s.Require().NoError(err)
-	conn, err := r.Handshake(ctx, transport.ReceivePackService)
+	_, err = r.Handshake(ctx, transport.ReceivePackService)
 	s.Require().NoError(err)
-	ar, err := conn.GetRemoteRefs(ctx)
+	ar, err := r.GetRemoteRefs(ctx)
 	s.Require().NoError(err, fmt.Sprintf("endpoint: %s", ep.String()))
 	ok := false
 	var ref *plumbing.Reference
@@ -342,7 +342,7 @@ func (s *ReceivePackSuite) checkRemoteReference(ep *transport.Endpoint,
 		s.Require().Equal(head, ref.Hash())
 	}
 
-	s.Require().NoError(conn.Close())
+	s.Require().NoError(r.Close())
 }
 
 func (s *ReceivePackSuite) TestSendPackAddDeleteReference() {
@@ -356,13 +356,13 @@ func (s *ReceivePackSuite) testSendPackAddReference() {
 	r, err := s.Client.NewSession(s.Storer, s.Endpoint, s.EmptyAuth)
 	s.Require().NoError(err)
 
-	conn, err := r.Handshake(ctx, transport.ReceivePackService)
+	_, err = r.Handshake(ctx, transport.ReceivePackService)
 	s.Require().NoError(err)
 
-	refs, err := conn.GetRemoteRefs(ctx)
+	refs, err := r.GetRemoteRefs(ctx)
 	s.Require().NoError(err)
 	s.Require().NotNil(refs)
-	s.Require().NoError(conn.Close())
+	s.Require().NoError(r.Close())
 
 	fixture := fixtures.Basic().ByTag("packfile").One()
 
@@ -382,14 +382,14 @@ func (s *ReceivePackSuite) testSendPackDeleteReference() {
 	r, err := s.Client.NewSession(s.Storer, s.Endpoint, s.EmptyAuth)
 	s.Require().NoError(err)
 
-	conn, err := r.Handshake(ctx, transport.ReceivePackService)
+	_, err = r.Handshake(ctx, transport.ReceivePackService)
 	s.Require().NoError(err)
 
-	caps := conn.Capabilities()
-	refs, err := conn.GetRemoteRefs(ctx)
+	caps := r.Capabilities()
+	refs, err := r.GetRemoteRefs(ctx)
 	s.Require().NoError(err)
 	s.Require().NotNil(refs)
-	s.Require().NoError(conn.Close())
+	s.Require().NoError(r.Close())
 
 	fixture := fixtures.Basic().ByTag("packfile").One()
 

@@ -112,12 +112,12 @@ func (r *Remote) PushContext(ctx context.Context, o *PushOptions) (err error) {
 		return err
 	}
 
-	conn, err := s.Handshake(ctx, transport.ReceivePackService)
+	_, err = s.Handshake(ctx, transport.ReceivePackService)
 	if err != nil {
 		return err
 	}
 
-	rRefs, err := conn.GetRemoteRefs(ctx)
+	rRefs, err := s.GetRemoteRefs(ctx)
 	if err != nil {
 		return err
 	}
@@ -127,10 +127,10 @@ func (r *Remote) PushContext(ctx context.Context, o *PushOptions) (err error) {
 		return err
 	}
 
-	return r.sendPack(ctx, conn, remoteRefs, o)
+	return r.sendPack(ctx, s, remoteRefs, o)
 }
 
-func (r *Remote) sendPack(ctx context.Context, conn transport.Connection, remoteRefs storer.ReferenceStorer, o *PushOptions) error {
+func (r *Remote) sendPack(ctx context.Context, sess transport.Session, remoteRefs storer.ReferenceStorer, o *PushOptions) error {
 	isDelete := false
 	allDelete := true
 	for _, rs := range o.RefSpecs {
@@ -145,7 +145,7 @@ func (r *Remote) sendPack(ctx context.Context, conn transport.Connection, remote
 	}
 
 	// TODO: support delete-refs
-	caps := conn.Capabilities() // server capabilities
+	caps := sess.Capabilities() // server capabilities
 	if isDelete && !caps.Supports(capability.DeleteRefs) {
 		return ErrDeleteRefNotSupported
 	}
@@ -223,7 +223,7 @@ func (r *Remote) sendPack(ctx context.Context, conn transport.Connection, remote
 		}
 	}
 
-	if err := pushHashes(ctx, conn, r.s, cmds, hashesToPush, allDelete, o); err != nil {
+	if err := pushHashes(ctx, sess, r.s, cmds, hashesToPush, allDelete, o); err != nil {
 		return err
 	}
 
@@ -384,11 +384,11 @@ func (r *Remote) fetch(ctx context.Context, o *FetchOptions) (sto storer.Referen
 		return nil, err
 	}
 
-	if err := r.isSupportedRefSpec(o.RefSpecs, conn.Capabilities()); err != nil {
+	if err := r.isSupportedRefSpec(o.RefSpecs, sess.Capabilities()); err != nil {
 		return nil, err
 	}
 
-	rRefs, err := conn.GetRemoteRefs(ctx)
+	rRefs, err := sess.GetRemoteRefs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +436,7 @@ func (r *Remote) fetch(ctx context.Context, o *FetchOptions) (sto storer.Referen
 			Filter:      o.Filter,
 		}
 
-		if err := conn.Fetch(ctx, req); err != nil && !errors.Is(err, transport.ErrNoChange) {
+		if err := sess.Fetch(ctx, req); err != nil && !errors.Is(err, transport.ErrNoChange) {
 			// Note: We receive ErrNoChange when remote is the same as local. At
 			// this point, we have everything we're asking for.
 			return nil, err
@@ -1258,7 +1258,7 @@ func (r *Remote) list(ctx context.Context, o *ListOptions) (rfs []*plumbing.Refe
 
 	defer ioutil.CheckClose(conn, &err)
 
-	allRefs, err := conn.GetRemoteRefs(ctx)
+	allRefs, err := s.GetRemoteRefs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1318,14 +1318,14 @@ func referencesToHashes(refs storer.ReferenceStorer) ([]plumbing.Hash, error) {
 
 func pushHashes(
 	ctx context.Context,
-	conn transport.Connection,
+	sess transport.Session,
 	s storage.Storer,
 	cmds []*packp.Command,
 	hs []plumbing.Hash,
 	allDelete bool,
 	o *PushOptions,
 ) error {
-	useRefDeltas := !conn.Capabilities().Supports(capability.OFSDelta)
+	useRefDeltas := !sess.Capabilities().Supports(capability.OFSDelta)
 	rd, wr := io.Pipe()
 
 	config, err := s.Config()
@@ -1359,7 +1359,7 @@ func pushHashes(
 		close(done)
 	}
 
-	if err := conn.Push(ctx, req); err != nil {
+	if err := sess.Push(ctx, req); err != nil {
 		// close the pipe to unlock encode write
 		_ = rd.Close()
 		return err

@@ -69,7 +69,7 @@ func buildUpdateRequests(caps *capability.List, req *PushRequest) *packp.UpdateR
 func SendPack(
 	ctx context.Context,
 	st storage.Storer,
-	conn Connection,
+	sess Session,
 	writer io.WriteCloser,
 	reader io.ReadCloser,
 	req *PushRequest,
@@ -92,7 +92,7 @@ func SendPack(
 		return fmt.Errorf("packfile is required for push request with new objects")
 	}
 
-	caps := conn.Capabilities()
+	caps := sess.Capabilities()
 	upreq := buildUpdateRequests(caps, req)
 	if err := upreq.Encode(writer); err != nil {
 		return err

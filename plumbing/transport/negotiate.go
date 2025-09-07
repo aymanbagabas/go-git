@@ -24,14 +24,14 @@ var (
 func NegotiatePack(
 	ctx context.Context,
 	st storage.Storer,
-	conn Connection,
+	sess Session,
 	reader io.Reader,
 	writer io.WriteCloser,
 	req *FetchRequest,
 ) (shallowInfo *packp.ShallowUpdate, err error) {
 	reader = ioutil.NewContextReader(ctx, reader)
 	writer = ioutil.NewContextWriteCloser(ctx, writer)
-	caps := conn.Capabilities()
+	caps := sess.Capabilities()
 
 	// Create upload-request
 	upreq := packp.NewUploadRequest()
@@ -150,15 +150,15 @@ func NegotiatePack(
 		}
 
 		// Begin the upload-pack negotiation
-		if firstRound || conn.StatelessRPC() {
+		if firstRound || sess.StatelessRPC() {
 			if err := upreq.Encode(writer); err != nil {
 				return nil, fmt.Errorf("sending upload-request: %w", err)
 			}
 		}
 
 		readc := make(chan error)
-		if !conn.StatelessRPC() {
-			go func() { readc <- readShallows(conn, reader, req, &shallowInfo, firstRound) }()
+		if !sess.StatelessRPC() {
+			go func() { readc <- readShallows(sess, reader, req, &shallowInfo, firstRound) }()
 		}
 
 		// Encode upload-haves
@@ -167,12 +167,12 @@ func NegotiatePack(
 		}
 
 		// Close the writer to signal the end of the request
-		if conn.StatelessRPC() {
+		if sess.StatelessRPC() {
 			if err := writer.Close(); err != nil {
 				return nil, fmt.Errorf("closing writer: %w", err)
 			}
 
-			if err := readShallows(conn, reader, req, &shallowInfo, firstRound); err != nil {
+			if err := readShallows(sess, reader, req, &shallowInfo, firstRound); err != nil {
 				return nil, err
 			}
 		} else {
@@ -213,7 +213,7 @@ func NegotiatePack(
 		firstRound = false
 	}
 
-	if !conn.StatelessRPC() {
+	if !sess.StatelessRPC() {
 		if err := writer.Close(); err != nil {
 			return nil, fmt.Errorf("closing writer: %w", err)
 		}
@@ -241,7 +241,7 @@ func isSubset(needle []plumbing.Hash, haystack []plumbing.Hash) bool {
 }
 
 func readShallows(
-	conn Connection,
+	conn Session,
 	r io.Reader,
 	req *FetchRequest,
 	shallowInfo **packp.ShallowUpdate,

@@ -17,7 +17,7 @@ import (
 func FetchPack(
 	ctx context.Context,
 	st storage.Storer,
-	conn Connection,
+	sess Session,
 	packf io.ReadCloser,
 	shallowInfo *packp.ShallowUpdate,
 	req *FetchRequest,
@@ -27,7 +27,7 @@ func FetchPack(
 	// Do we have sideband enabled?
 	var demuxer *sideband.Demuxer
 	var reader io.Reader = packf
-	caps := conn.Capabilities()
+	caps := sess.Capabilities()
 	if caps.Supports(capability.Sideband64k) {
 		demuxer = sideband.NewDemuxer(sideband.Sideband64k, reader)
 	} else if caps.Supports(capability.Sideband) {

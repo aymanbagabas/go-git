@@ -58,12 +58,12 @@ func (s *ProxySuite) TestAdvertisedReferencesHTTP() {
 
 	session, err := client.NewSession(st, endpoint, nil)
 	s.Require().NoError(err)
-	conn, err := session.Handshake(context.Background(), transport.UploadPackService)
+	_, err = session.Handshake(context.Background(), transport.UploadPackService)
 	s.Require().NoError(err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	info, err := conn.GetRemoteRefs(ctx)
+	info, err := session.GetRemoteRefs(ctx)
 	s.NoError(err)
 	s.NotNil(info)
 
@@ -94,12 +94,12 @@ func (s *ProxySuite) TestAdvertisedReferencesHTTPS() {
 
 	session, err := client.NewSession(st, endpoint, nil)
 	s.Require().NoError(err)
-	conn, err := session.Handshake(context.Background(), transport.UploadPackService)
+	_, err = session.Handshake(context.Background(), transport.UploadPackService)
 	s.Require().NoError(err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	info, err := conn.GetRemoteRefs(ctx)
+	info, err := session.GetRemoteRefs(ctx)
 	s.NoError(err)
 	s.NotNil(info)
 

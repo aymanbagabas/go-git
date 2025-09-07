@@ -337,7 +337,7 @@ func newSession(st storage.Storer, c *client, ep *transport.Endpoint, auth trans
 }
 
 // Handshake implements transport.PackSession.
-func (s *HTTPSession) Handshake(ctx context.Context, service transport.Service, params ...string) (transport.Connection, error) {
+func (s *HTTPSession) Handshake(ctx context.Context, service transport.Service, params ...string) (transport.Conn, error) {
 	url, err := url.JoinPath(s.ep.String(), infoRefsPath)
 	if err != nil {
 		return nil, err
@@ -441,10 +441,13 @@ func (s *HTTPSession) Handshake(ctx context.Context, service transport.Service, 
 
 	s.refs = ar
 
-	return s, nil
+	return newRequester(ctx, s, service), nil
 }
 
-var _ transport.Connection = &HTTPSession{}
+// Close implements transport.Session.
+func (s *HTTPSession) Close() error {
+	return nil
+}
 
 // Capabilities implements transport.Connection.
 func (s *HTTPSession) Capabilities() *capability.List {
@@ -607,10 +610,6 @@ func (s *HTTPSession) ModifyEndpointIfRedirect(res *http.Response) {
 
 	s.ep.Protocol = r.URL.Scheme
 	s.ep.Path = r.URL.Path[:len(r.URL.Path)-len(infoRefsPath)]
-}
-
-func (*HTTPSession) Close() error {
-	return nil
 }
 
 // AuthMethod is concrete implementation of common.AuthMethod for HTTP services

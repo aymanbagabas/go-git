@@ -44,9 +44,8 @@ func (s *UploadPackSuite) SetupTest() {
 func (s *UploadPackSuite) TestAdvertisedReferencesNotExists() {
 	r, err := s.Client.NewSession(s.Storer, s.NonExistentEndpoint, s.EmptyAuth)
 	s.Nil(err)
-	conn, err := r.Handshake(context.TODO(), transport.UploadPackService)
+	_, err = r.Handshake(context.TODO(), transport.UploadPackService)
 	s.Error(err)
-	s.Nil(conn)
 }
 
 func (s *UploadPackSuite) TestAdvertisedReferencesRedirectPath() {
@@ -54,15 +53,15 @@ func (s *UploadPackSuite) TestAdvertisedReferencesRedirectPath() {
 
 	session, err := s.Client.NewSession(s.Storer, endpoint, s.EmptyAuth)
 	s.NoError(err)
-	conn, err := session.Handshake(context.TODO(), transport.UploadPackService)
+	_, err = session.Handshake(context.TODO(), transport.UploadPackService)
 	s.NoError(err)
-	defer func() { s.Nil(conn.Close()) }()
+	defer func() { s.Nil(session.Close()) }()
 
-	info, err := conn.GetRemoteRefs(context.TODO())
+	info, err := session.GetRemoteRefs(context.TODO())
 	s.NoError(err)
 	s.NotNil(info)
 
-	url := conn.(*HTTPSession).ep.String()
+	url := session.(*HTTPSession).ep.String()
 	s.Equal("https://gitlab.com/gitlab-org/gitter/webapp.git", url)
 }
 
@@ -71,15 +70,15 @@ func (s *UploadPackSuite) TestAdvertisedReferencesRedirectSchema() {
 
 	session, err := s.Client.NewSession(s.Storer, endpoint, s.EmptyAuth)
 	s.NoError(err)
-	conn, err := session.Handshake(context.TODO(), transport.UploadPackService)
+	_, err = session.Handshake(context.TODO(), transport.UploadPackService)
 	s.NoError(err)
-	defer func() { s.Nil(conn.Close()) }()
+	defer func() { s.Nil(session.Close()) }()
 
-	info, err := conn.GetRemoteRefs(context.TODO())
+	info, err := session.GetRemoteRefs(context.TODO())
 	s.NoError(err)
 	s.NotNil(info)
 
-	url := conn.(*HTTPSession).ep.String()
+	url := session.(*HTTPSession).ep.String()
 	s.Equal("https://github.com/git-fixtures/basic", url)
 }
 
@@ -90,15 +89,15 @@ func (s *UploadPackSuite) TestAdvertisedReferencesContext() {
 
 	session, err := s.Client.NewSession(s.Storer, endpoint, s.EmptyAuth)
 	s.NoError(err)
-	conn, err := session.Handshake(ctx, transport.UploadPackService)
+	_, err = session.Handshake(ctx, transport.UploadPackService)
 	s.NoError(err)
-	defer func() { s.Nil(conn.Close()) }()
+	defer func() { s.Nil(session.Close()) }()
 
-	info, err := conn.GetRemoteRefs(ctx)
+	info, err := session.GetRemoteRefs(ctx)
 	s.NoError(err)
 	s.NotNil(info)
 
-	url := conn.(*HTTPSession).ep.String()
+	url := session.(*HTTPSession).ep.String()
 	s.Equal("https://github.com/git-fixtures/basic", url)
 }
 
@@ -109,8 +108,7 @@ func (s *UploadPackSuite) TestAdvertisedReferencesContextCanceled() {
 
 	session, err := s.Client.NewSession(s.Storer, endpoint, s.EmptyAuth)
 	s.NoError(err)
-	conn, err := session.Handshake(ctx, transport.UploadPackService)
+	_, err = session.Handshake(ctx, transport.UploadPackService)
 	s.Error(err)
-	s.Nil(conn)
 	s.Equal(&url.Error{Op: "Get", URL: "http://github.com/git-fixtures/basic/info/refs?service=git-upload-pack", Err: context.Canceled}, err)
 }

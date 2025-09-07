@@ -37,12 +37,19 @@ type PackSession struct {
 	ep   *Endpoint
 	auth AuthMethod
 	st   storage.Storer
+	conn *packConnection
+
+	cmd     Command
+	svc     Service
+	version protocol.Version
+	caps    *capability.List
+	refs    *packp.AdvRefs
 }
 
 var _ Session = &PackSession{}
 
 // Handshake implements Session.
-func (p *PackSession) Handshake(ctx context.Context, service Service, params ...string) (conn Connection, err error) {
+func (p *PackSession) Handshake(ctx context.Context, service Service, params ...string) (conn Conn, err error) {
 	switch service {
 	case UploadPackService, ReceivePackService:
 		// do nothing
@@ -54,10 +61,9 @@ func (p *PackSession) Handshake(ctx context.Context, service Service, params ...
 		return nil, err
 	}
 
+	p.cmd = cmd
 	c := &packConnection{
-		st:  p.st,
 		cmd: cmd,
-		svc: service,
 	}
 
 	// Check if the context is already done before starting the command.
@@ -99,12 +105,12 @@ func (p *PackSession) Handshake(ctx context.Context, service Service, params ...
 		return nil, err
 	}
 
-	c.version, err = DiscoverVersion(c.r)
+	p.version, err = DiscoverVersion(c.r)
 	if err != nil {
 		return nil, err
 	}
 
-	switch c.version {
+	switch p.version {
 	case protocol.V2:
 		return nil, ErrUnsupportedVersion
 	case protocol.V1:
@@ -118,51 +124,21 @@ func (p *PackSession) Handshake(ctx context.Context, service Service, params ...
 		return nil, err
 	}
 
-	c.refs = ar
-	c.caps = ar.Capabilities
+	p.svc = service
+	p.refs = ar
+	p.caps = ar.Capabilities
+	p.conn = c
 
 	return c, nil
 }
 
-// packConnection is a convenience type that implements io.ReadWriteCloser.
-type packConnection struct {
-	st        storage.Storer
-	cmd       Command
-	svc       Service
-	w         io.WriteCloser // stdin
-	r         *bufio.Reader  // stdout
-	stderrBuf bytes.Buffer
-
-	version protocol.Version
-	caps    *capability.List
-	refs    *packp.AdvRefs
-}
-
-var _ Connection = &packConnection{}
-
-// stderr returns stderr of the command if it's not empty. This will always
-// return a RemoteError.
-func (p *packConnection) stderr() error {
-	s := strings.TrimSpace(p.stderrBuf.String())
-	if s == "" {
-		return nil
-	}
-
-	return NewRemoteError(s)
-}
-
-// Close implements Connection.
-func (p *packConnection) Close() error {
-	return p.cmd.Close()
-}
-
 // Capabilities implements Connection.
-func (p *packConnection) Capabilities() *capability.List {
+func (p *PackSession) Capabilities() *capability.List {
 	return p.caps
 }
 
 // GetRemoteRefs implements Connection.
-func (p *packConnection) GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference, error) {
+func (p *PackSession) GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference, error) {
 	if p.refs == nil {
 		// TODO: return appropriate error
 		return nil, ErrEmptyRemoteRepository
@@ -180,28 +156,69 @@ func (p *packConnection) GetRemoteRefs(ctx context.Context) ([]*plumbing.Referen
 }
 
 // Version implements Connection.
-func (p *packConnection) Version() protocol.Version {
+func (p *PackSession) Version() protocol.Version {
 	return p.version
 }
 
 // StatelessRPC implements Connection.
-func (*packConnection) StatelessRPC() bool {
+func (*PackSession) StatelessRPC() bool {
 	return false
 }
 
 // Fetch implements Connection.
-func (p *packConnection) Fetch(ctx context.Context, req *FetchRequest) (err error) {
-	shallows, err := NegotiatePack(ctx, p.st, p, p.r, p.w, req)
+func (p *PackSession) Fetch(ctx context.Context, req *FetchRequest) (err error) {
+	shallows, err := NegotiatePack(ctx, p.st, p, p.conn, p.conn, req)
 	if err != nil {
 		return err
 	}
 
-	return FetchPack(ctx, p.st, p, io.NopCloser(p.r), shallows, req)
+	return FetchPack(ctx, p.st, p, io.NopCloser(p.conn), shallows, req)
 }
 
 // Push implements Connection.
-func (p *packConnection) Push(ctx context.Context, req *PushRequest) (err error) {
-	return SendPack(ctx, p.st, p, p.w, io.NopCloser(p.r), req)
+func (p *PackSession) Push(ctx context.Context, req *PushRequest) (err error) {
+	return SendPack(ctx, p.st, p, p.conn, io.NopCloser(p.conn), req)
+}
+
+// Close implements Session.
+func (p *PackSession) Close() error {
+	return p.cmd.Close()
+}
+
+// packConnection is a convenience type that implements io.ReadWriteCloser.
+type packConnection struct {
+	cmd       Command
+	w         io.WriteCloser // stdin
+	r         *bufio.Reader  // stdout
+	stderrBuf bytes.Buffer
+}
+
+var _ Conn = &packConnection{}
+
+// Close implements Connection.
+func (p *packConnection) Close() error {
+	return p.w.Close()
+}
+
+// Write implements io.Writer.
+func (p *packConnection) Write(b []byte) (n int, err error) {
+	return p.w.Write(b)
+}
+
+// Read implements io.Reader.
+func (p *packConnection) Read(b []byte) (n int, err error) {
+	return p.r.Read(b)
+}
+
+// stderr returns stderr of the command if it's not empty. This will always
+// return a RemoteError.
+func (p *packConnection) stderr() error {
+	s := strings.TrimSpace(p.stderrBuf.String())
+	if s == "" {
+		return nil
+	}
+
+	return NewRemoteError(s)
 }
 
 // checkError checks if the error is not nil updates the pointer with the

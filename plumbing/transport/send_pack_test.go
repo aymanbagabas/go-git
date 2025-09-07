@@ -17,36 +17,40 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// mockConnection implements the Connection interface for testing
-type mockConnection struct {
+// mockSession implements the [Session] interface for testing
+type mockSession struct {
 	caps *capability.List
 }
 
-func (c *mockConnection) Close() error {
-	return nil
-}
-
-func (c *mockConnection) Capabilities() *capability.List {
-	return c.caps
-}
-
-func (c *mockConnection) Version() protocol.Version {
-	return protocol.V1
-}
-
-func (c *mockConnection) StatelessRPC() bool {
-	return false
-}
-
-func (c *mockConnection) GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference, error) {
+func (c *mockSession) Handshake(ctx context.Context, service Service, params ...string) (Conn, error) {
 	return nil, nil
 }
 
-func (c *mockConnection) Fetch(ctx context.Context, req *FetchRequest) error {
+func (c *mockSession) Close() error {
 	return nil
 }
 
-func (c *mockConnection) Push(ctx context.Context, req *PushRequest) error {
+func (c *mockSession) Capabilities() *capability.List {
+	return c.caps
+}
+
+func (c *mockSession) Version() protocol.Version {
+	return protocol.V1
+}
+
+func (c *mockSession) StatelessRPC() bool {
+	return false
+}
+
+func (c *mockSession) GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference, error) {
+	return nil, nil
+}
+
+func (c *mockSession) Fetch(ctx context.Context, req *FetchRequest) error {
+	return nil
+}
+
+func (c *mockSession) Push(ctx context.Context, req *PushRequest) error {
 	return nil
 }
 
@@ -90,7 +94,7 @@ func (rw *mockReadWriteCloser) Close() error {
 func TestSendPackWithReportStatus(t *testing.T) {
 	caps := capability.NewList()
 	caps.Add(capability.ReportStatus) //nolint:errcheck
-	conn := &mockConnection{caps: caps}
+	conn := &mockSession{caps: caps}
 
 	// Create a mock reader with a valid report status response
 	reportStatusResponse := strings.Join([]string{
@@ -127,7 +131,7 @@ func TestSendPackWithReportStatus(t *testing.T) {
 func TestSendPackWithReportStatusError(t *testing.T) {
 	caps := capability.NewList()
 	caps.Add(capability.ReportStatus)
-	conn := &mockConnection{caps: caps}
+	conn := &mockSession{caps: caps}
 
 	// Create a mock reader with an error report status response
 	reportStatusResponse := strings.Join([]string{
@@ -166,7 +170,7 @@ func TestSendPackWithReportStatusError(t *testing.T) {
 func TestSendPackWithoutReportStatus(t *testing.T) {
 	// Create a mock connection without ReportStatus capability
 	caps := capability.NewList()
-	conn := &mockConnection{caps: caps}
+	conn := &mockSession{caps: caps}
 
 	reader := newMockRWC(nil)
 	writer := newMockRWC(nil)
@@ -201,7 +205,7 @@ func TestSendPackWithProgress(t *testing.T) {
 	caps := capability.NewList()
 	caps.Add(capability.ReportStatus)
 	caps.Add(capability.Sideband64k)
-	conn := &mockConnection{caps: caps}
+	conn := &mockSession{caps: caps}
 
 	// Create a mock reader with a sideband-encoded report status response
 	// This simulates a response with progress messages and a report status
@@ -248,7 +252,7 @@ func TestSendPackWithProgress(t *testing.T) {
 func TestSendPackWithPackfile(t *testing.T) {
 	caps := capability.NewList()
 	caps.Add(capability.ReportStatus)
-	conn := &mockConnection{caps: caps}
+	conn := &mockSession{caps: caps}
 
 	// Create a mock reader with a valid report status response
 	reportStatusResponse := strings.Join([]string{
@@ -289,7 +293,7 @@ func TestSendPackErrors(t *testing.T) {
 	// Create a mock connection with ReportStatus capability
 	caps := capability.NewList()
 	caps.Add(capability.ReportStatus)
-	conn := &mockConnection{caps: caps}
+	conn := &mockSession{caps: caps}
 
 	// Test case: error encoding update requests
 	t.Run("EncodeError", func(t *testing.T) {
