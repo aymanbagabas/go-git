@@ -47,25 +47,32 @@ func (c *mockStartEOFCommand) Close() error {
 	return nil
 }
 
-type mockStartEOFCommander struct {
+type mockStartEOFRunner struct {
 	mockCmd *mockStartEOFCommand
 }
 
-func (c *mockStartEOFCommander) Command(_ context.Context, cmd string, ep *Endpoint, auth AuthMethod, _ ...string) (Command, error) {
+func (c *mockStartEOFRunner) Run(_ context.Context, cmd *Cmd, _ *Endpoint, _ AuthMethod) error {
 	c.mockCmd = &mockStartEOFCommand{}
-	return c.mockCmd, nil
+	cmd.Start = c.mockCmd.Start
+	cmd.StderrPipe = c.mockCmd.StderrPipe
+	cmd.StdinPipe = c.mockCmd.StdinPipe
+	cmd.StdoutPipe = c.mockCmd.StdoutPipe
+	cmd.Close = c.mockCmd.Close
+	return nil
 }
 
 func (s *CmdStartEOFSuite) TestCmdStartEOFConnectionLeakError() {
-	client := NewPackTransport(&mockStartEOFCommander{})
-	sess, err := client.NewSession(nil, nil, nil)
+	client := NewPackTransport(&mockStartEOFRunner{})
+	ep, err := NewEndpoint("file://foo")
+	s.NoError(err)
+	sess, err := client.NewSession(nil, ep, nil)
 	if err != nil {
 		s.T().Fatalf("unexpected error: %s", err)
 	}
 
 	_, err = sess.Handshake(context.TODO(), UploadPackService)
 	s.ErrorIs(err, io.EOF)
-	cmdrInterface := sess.(*PackSession).cmdr
-	cmdr := cmdrInterface.(*mockStartEOFCommander)
-	s.False(cmdr.mockCmd.sessionOpened)
+	runrInterface := sess.(*PackSession).runr
+	runr := runrInterface.(*mockStartEOFRunner)
+	s.False(runr.mockCmd.sessionOpened)
 }

@@ -42,10 +42,10 @@ func (s *ClientSuite) TestCommand() {
 		},
 	}
 	var emptyAuth transport.AuthMethod
-	_, err = runner.Command(context.TODO(), "git-receive-pack", ep, emptyAuth)
+	err = runner.Run(context.TODO(), transport.ReceivePackService.Command(ep.String()), ep, emptyAuth)
 	s.Nil(err)
 
 	// Make sure we get an error for one that doesn't exist.
-	_, err = runner.Command(context.TODO(), "git-fake-command", ep, emptyAuth)
+	err = runner.Run(context.TODO(), transport.GitService("git-fake-command").Command(ep.String()), ep, emptyAuth)
 	s.NotNil(err)
 }

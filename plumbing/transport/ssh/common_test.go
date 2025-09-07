@@ -59,7 +59,7 @@ func (s *SuiteCommon) TestDefaultSSHConfig() {
 	ep, err := transport.NewEndpoint("git@github.com:foo/bar.git")
 	s.NoError(err)
 
-	cmd := &command{endpoint: ep}
+	cmd := &session{endpoint: ep}
 	s.Equal("foo.local:42", cmd.getHostWithPort())
 }
 
@@ -73,7 +73,7 @@ func (s *SuiteCommon) TestDefaultSSHConfigNil() {
 	ep, err := transport.NewEndpoint("git@github.com:foo/bar.git")
 	s.NoError(err)
 
-	cmd := &command{endpoint: ep}
+	cmd := &session{endpoint: ep}
 	s.Equal("github.com:22", cmd.getHostWithPort())
 }
 
@@ -91,7 +91,7 @@ func (s *SuiteCommon) TestDefaultSSHConfigWildcard() {
 	ep, err := transport.NewEndpoint("git@github.com:foo/bar.git")
 	s.NoError(err)
 
-	cmd := &command{endpoint: ep}
+	cmd := &session{endpoint: ep}
 	s.Equal("github.com:22", cmd.getHostWithPort())
 }
 
@@ -167,10 +167,13 @@ func TestIssue70Suite(t *testing.T) {
 	}
 	base, port, _ := setupTest(t)
 	var emptyAuth AuthMethod
-	cmd, err := r.Command(context.TODO(), "command", newEndpoint(t, base, port, "endpoint"), emptyAuth)
+	ep := newEndpoint(t, base, port, "endpoint")
+	cmd := transport.UploadPackService.Command(ep.String())
+	err := r.Run(context.TODO(), cmd, ep, emptyAuth)
+	s := cmd.Sys.(*session)
 	require.NoError(t, err)
-	require.NoError(t, cmd.(*command).client.Close())
-	require.NoError(t, cmd.Close())
+	require.NoError(t, s.client.Close())
+	require.NoError(t, s.Close())
 }
 
 func (s *SuiteCommon) TestInvalidSocks5Proxy() {
@@ -220,7 +223,8 @@ func (s *UploadPackSuite) TestCommandWithInvalidAuthMethod() {
 	r := &runner{}
 	auth := &invalidAuthMethod{}
 
-	_, err := r.Command(context.TODO(), "command", newEndpoint(s.T(), s.base, s.port, "endpoint"), auth)
+	ep := newEndpoint(s.T(), s.base, s.port, "endpoint")
+	err := r.Run(context.TODO(), transport.UploadPackService.Command(ep.String()), ep, auth)
 
 	s.Error(err)
 	s.Equal("invalid auth method", err.Error())

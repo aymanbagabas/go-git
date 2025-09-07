@@ -20,12 +20,12 @@ func NewPackSession(
 	st storage.Storer,
 	ep *Endpoint,
 	auth AuthMethod,
-	cmdr Commander,
+	runr Runner,
 ) (Session, error) {
 	ps := &PackSession{
 		ep:   ep,
 		auth: auth,
-		cmdr: cmdr,
+		runr: runr,
 		st:   st,
 	}
 	return ps, nil
@@ -33,13 +33,13 @@ func NewPackSession(
 
 // PackSession is a session that implements a full-duplex Git pack transport.
 type PackSession struct {
-	cmdr Commander
+	runr Runner
 	ep   *Endpoint
 	auth AuthMethod
 	st   storage.Storer
 	conn *packConnection
 
-	cmd     Command
+	cmd     *Cmd
 	svc     Service
 	version protocol.Version
 	caps    *capability.List
@@ -56,15 +56,16 @@ func (p *PackSession) Handshake(ctx context.Context, service Service, params ...
 	default:
 		return nil, ErrUnsupportedService
 	}
-	cmd, err := p.cmdr.Command(ctx, service.String(), p.ep, p.auth, params...)
-	if err != nil {
+	cmd := service.Command(p.ep.String())
+	if len(params) > 0 {
+		cmd.Env = append(cmd.Env, "GIT_PROTOCOL="+strings.Join(params, ":"))
+	}
+	if err := p.runr.Run(ctx, cmd, p.ep, p.auth); err != nil {
 		return nil, err
 	}
 
 	p.cmd = cmd
-	c := &packConnection{
-		cmd: cmd,
-	}
+	c := &packConnection{}
 
 	// Check if the context is already done before starting the command.
 	if ctx.Err() != nil {
@@ -83,7 +84,7 @@ func (p *PackSession) Handshake(ctx context.Context, service Service, params ...
 		return nil, err
 	}
 
-	cr := ioutil.NewContextReaderWithCloser(ctx, stdout, cmd)
+	cr := ioutil.NewContextReaderWithCloser(ctx, stdout, ioutil.CloserFunc(cmd.Close))
 	c.r = bufio.NewReader(cr)
 
 	stderr, err := cmd.StderrPipe()
@@ -187,7 +188,6 @@ func (p *PackSession) Close() error {
 
 // packConnection is a convenience type that implements io.ReadWriteCloser.
 type packConnection struct {
-	cmd       Command
 	w         io.WriteCloser // stdin
 	r         *bufio.Reader  // stdout
 	stderrBuf bytes.Buffer

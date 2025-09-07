@@ -51,63 +51,87 @@ type runner struct {
 	config *ssh.ClientConfig
 }
 
-func (r *runner) Command(ctx context.Context, cmd string, ep *transport.Endpoint, auth transport.AuthMethod, params ...string) (transport.Command, error) {
-	c := &command{command: cmd, endpoint: ep, config: r.config}
+func (r *runner) Run(ctx context.Context, cmd *transport.Cmd, ep *transport.Endpoint, auth transport.AuthMethod) error {
+	switch transport.GitService(cmd.Path) {
+	case transport.UploadPackService, transport.ReceivePackService:
+		// do nothing
+	default:
+		return transport.ErrUnsupportedService
+	}
+
+	if len(cmd.Args) < 2 {
+		return fmt.Errorf("ssh: missing repository path")
+	}
+
+	s := &session{config: r.config}
+	s.command = cmd.Path
+	s.endpoint = ep
+
 	if auth != nil {
-		if err := c.setAuth(auth); err != nil {
-			return nil, err
+		if err := s.setAuth(auth); err != nil {
+			return err
 		}
 	}
 
-	gitProtocol := strings.Join(params, ":")
-	if err := c.connect(ctx); err != nil {
-		return nil, err
+	if err := s.connect(ctx); err != nil {
+		return err
 	}
 
-	if gitProtocol != "" {
-		c.Session.Setenv("GIT_PROTOCOL", gitProtocol)
+	for _, env := range cmd.Env {
+		name, val, ok := strings.Cut(env, "=")
+		if !ok {
+			continue
+		}
+		s.Session.Setenv(name, val)
 	}
 
-	return c, nil
+	cmd.Start = s.Start
+	cmd.StderrPipe = s.StderrPipe
+	cmd.StdinPipe = s.StdinPipe
+	cmd.StdoutPipe = s.StdoutPipe
+	cmd.Close = s.Close
+	cmd.Sys = s
+
+	return nil
 }
 
-type command struct {
+type session struct {
 	*ssh.Session
+	config    *ssh.ClientConfig
 	connected bool
 	command   string
 	endpoint  *transport.Endpoint
 	client    *ssh.Client
 	auth      AuthMethod
-	config    *ssh.ClientConfig
 }
 
-func (c *command) setAuth(auth transport.AuthMethod) error {
+func (s *session) setAuth(auth transport.AuthMethod) error {
 	a, ok := auth.(AuthMethod)
 	if !ok {
 		return transport.ErrInvalidAuthMethod
 	}
 
-	c.auth = a
+	s.auth = a
 	return nil
 }
 
-func (c *command) Start() error {
-	cmd := endpointToCommand(c.command, c.endpoint)
-	return c.Session.Start(cmd)
+func (s *session) Start() error {
+	cmd := endpointToCommand(s.command, s.endpoint)
+	return s.Session.Start(cmd)
 }
 
 // Close closes the SSH session and connection.
-func (c *command) Close() error {
-	if !c.connected {
+func (s *session) Close() error {
+	if !s.connected {
 		return nil
 	}
 
-	c.connected = false
+	s.connected = false
 
 	// XXX: If did read the full packfile, then the session might be already
 	//     closed.
-	_ = c.Session.Close()
-	err := c.client.Close()
+	_ = s.Session.Close()
+	err := s.client.Close()
 	if errors.Is(err, net.ErrClosed) {
 		return nil
 	}
@@ -119,23 +143,23 @@ func (c *command) Close() error {
 // SetAuth method, by default uses an auth method based on PublicKeysCallback,
 // it connects to a SSH agent, using the address stored in the SSH_AUTH_SOCK
 // environment var.
-func (c *command) connect(ctx context.Context) error {
-	if c.connected {
+func (s *session) connect(ctx context.Context) error {
+	if s.connected {
 		return transport.ErrAlreadyConnected
 	}
 
-	if c.auth == nil {
-		if err := c.setAuthFromEndpoint(); err != nil {
+	if s.auth == nil {
+		if err := s.setAuthFromEndpoint(); err != nil {
 			return err
 		}
 	}
 
 	var err error
-	config, err := c.auth.ClientConfig()
+	config, err := s.auth.ClientConfig()
 	if err != nil {
 		return err
 	}
-	hostWithPort := c.getHostWithPort()
+	hostWithPort := s.getHostWithPort()
 	if config.HostKeyCallback == nil {
 		db, err := newKnownHostsDb()
 		if err != nil {
@@ -160,20 +184,20 @@ func (c *command) connect(ctx context.Context) error {
 
 	trace.SSH.Printf("ssh: host key algorithms %s", config.HostKeyAlgorithms)
 
-	overrideConfig(c.config, config)
+	overrideConfig(s.config, config)
 
-	c.client, err = dial(ctx, "tcp", hostWithPort, c.endpoint.Proxy, config)
+	s.client, err = dial(ctx, "tcp", hostWithPort, s.endpoint.Proxy, config)
 	if err != nil {
 		return err
 	}
 
-	c.Session, err = c.client.NewSession()
+	s.Session, err = s.client.NewSession()
 	if err != nil {
-		_ = c.client.Close()
+		_ = s.client.Close()
 		return err
 	}
 
-	c.connected = true
+	s.connected = true
 	return nil
 }
 
@@ -222,13 +246,13 @@ func dial(ctx context.Context, network, addr string, proxyOpts transport.ProxyOp
 	return ssh.NewClient(c, chans, reqs), nil
 }
 
-func (c *command) getHostWithPort() string {
-	if addr, found := c.doGetHostWithPortFromSSHConfig(); found {
+func (s *session) getHostWithPort() string {
+	if addr, found := s.doGetHostWithPortFromSSHConfig(); found {
 		return addr
 	}
 
-	host := c.endpoint.Host
-	port := c.endpoint.Port
+	host := s.endpoint.Host
+	port := s.endpoint.Port
 	if port <= 0 {
 		port = DefaultPort
 	}
@@ -236,15 +260,15 @@ func (c *command) getHostWithPort() string {
 	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
-func (c *command) doGetHostWithPortFromSSHConfig() (addr string, found bool) {
+func (s *session) doGetHostWithPortFromSSHConfig() (addr string, found bool) {
 	if DefaultSSHConfig == nil {
 		return
 	}
 
-	host := c.endpoint.Host
-	port := c.endpoint.Port
+	host := s.endpoint.Host
+	port := s.endpoint.Port
 
-	configHost := DefaultSSHConfig.Get(c.endpoint.Host, "Hostname")
+	configHost := DefaultSSHConfig.Get(s.endpoint.Host, "Hostname")
 	if configHost != "" {
 		host = configHost
 		found = true
@@ -254,7 +278,7 @@ func (c *command) doGetHostWithPortFromSSHConfig() (addr string, found bool) {
 		return
 	}
 
-	configPort := DefaultSSHConfig.Get(c.endpoint.Host, "Port")
+	configPort := DefaultSSHConfig.Get(s.endpoint.Host, "Port")
 	if configPort != "" {
 		if i, err := strconv.Atoi(configPort); err == nil {
 			port = i
@@ -265,9 +289,9 @@ func (c *command) doGetHostWithPortFromSSHConfig() (addr string, found bool) {
 	return
 }
 
-func (c *command) setAuthFromEndpoint() error {
+func (s *session) setAuthFromEndpoint() error {
 	var err error
-	c.auth, err = DefaultAuthBuilder(c.endpoint.User)
+	s.auth, err = DefaultAuthBuilder(s.endpoint.User)
 	return err
 }
 

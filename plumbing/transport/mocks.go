@@ -8,38 +8,46 @@ import (
 	"github.com/go-git/go-git/v6/utils/ioutil"
 )
 
-type mockCommand struct {
-	stdin  bytes.Buffer
-	stdout bytes.Buffer
-	stderr bytes.Buffer
+type mockRunner struct {
+	stdin  *bytes.Buffer
+	stdout *bytes.Buffer
+	stderr *bytes.Buffer
 }
 
-func (c mockCommand) StderrPipe() (io.Reader, error) {
-	return &c.stderr, nil
+func (r mockRunner) StderrPipe() (io.Reader, error) {
+	return r.stderr, nil
 }
 
-func (c mockCommand) StdinPipe() (io.WriteCloser, error) {
-	return ioutil.WriteNopCloser(&c.stdin), nil
+func (r mockRunner) StdinPipe() (io.WriteCloser, error) {
+	return ioutil.WriteNopCloser(r.stdin), nil
 }
 
-func (c mockCommand) StdoutPipe() (io.Reader, error) {
-	return &c.stdout, nil
+func (r mockRunner) StdoutPipe() (io.Reader, error) {
+	return r.stdout, nil
 }
 
-func (c mockCommand) Start() error {
+func (r mockRunner) Start() error {
 	return nil
 }
 
-func (c mockCommand) Close() error {
+func (r mockRunner) Close() error {
 	return nil
 }
 
-type mockCommander struct {
-	stderr string
-}
-
-func (c mockCommander) Command(_ context.Context, cmd string, ep *Endpoint, auth AuthMethod, _ ...string) (Command, error) {
-	return &mockCommand{
-		stderr: *bytes.NewBufferString(c.stderr),
-	}, nil
+func (r mockRunner) Run(_ context.Context, cmd *Cmd, _ *Endpoint, _ AuthMethod) error {
+	if r.stdin == nil {
+		r.stdin = &bytes.Buffer{}
+	}
+	if r.stdout == nil {
+		r.stdout = &bytes.Buffer{}
+	}
+	if r.stderr == nil {
+		r.stderr = &bytes.Buffer{}
+	}
+	cmd.Start = r.Start
+	cmd.StderrPipe = r.StderrPipe
+	cmd.StdinPipe = r.StdinPipe
+	cmd.StdoutPipe = r.StdoutPipe
+	cmd.Close = r.Close
+	return nil
 }

@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -18,8 +19,10 @@ type CommonSuite struct {
 func (s *CommonSuite) TestAdvertisedReferencesWithRemoteUnknownError() {
 	stderr := "something"
 
-	client := NewPackTransport(mockCommander{stderr: stderr})
-	sess, err := client.NewSession(nil, nil, nil)
+	ep, err := NewEndpoint("https://example.com/foo.git")
+	s.NoError(err)
+	client := NewPackTransport(mockRunner{stderr: bytes.NewBufferString(stderr)})
+	sess, err := client.NewSession(nil, ep, nil)
 	if err != nil {
 		s.T().Fatalf("unexpected error: %s", err)
 	}

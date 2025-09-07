@@ -23,7 +23,7 @@ type service struct {
 	pattern *regexp.Regexp
 	method  string
 	handler http.HandlerFunc
-	svc     transport.Service
+	svc     transport.GitService
 }
 
 var services = []service{
@@ -270,7 +270,7 @@ func getInfoRefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	service := transport.Service(r.URL.Query().Get("service"))
+	service := transport.GitService(r.URL.Query().Get("service"))
 	version := r.Header.Get("Git-Protocol")
 
 	if service != "" {

@@ -58,7 +58,7 @@ func (b *Backend) ServeTCP(ctx context.Context, c io.ReadWriteCloser, req *packp
 	// Ensure we close the connection when we're done.
 	defer c.Close() //nolint:errcheck
 
-	svc := transport.Service(req.RequestCommand)
+	svc := transport.GitService(req.RequestCommand)
 	switch {
 	case svc == transport.UploadPackService && b.UploadPack,
 		svc == transport.ReceivePackService && b.ReceivePack:

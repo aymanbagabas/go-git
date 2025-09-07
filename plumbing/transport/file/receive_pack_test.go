@@ -48,7 +48,7 @@ func (s *ReceivePackSuite) TestNonExistentCommand() {
 	client := DefaultTransport
 	session, err := client.NewSession(s.Storer, s.Endpoint, s.EmptyAuth)
 	s.NoError(err)
-	conn, err := session.Handshake(context.TODO(), transport.Service("git-fake-command"))
+	conn, err := session.Handshake(context.TODO(), transport.GitService("git-fake-command"))
 	s.Regexp(regexp.MustCompile(".*(no such file or directory|file does not exist)*."), err)
 	s.Nil(conn)
 	s.Error(err)

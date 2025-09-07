@@ -3,9 +3,11 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v6/plumbing/transport"
@@ -23,17 +25,43 @@ const DefaultPort = 9418
 
 type runner struct{}
 
-// Command returns a new Command for the given cmd in the given Endpoint
-func (r *runner) Command(ctx context.Context, cmd string, ep *transport.Endpoint, _ transport.AuthMethod, params ...string) (transport.Command, error) {
-	c := &command{command: cmd, endpoint: ep, params: params}
-	if err := c.connect(); err != nil {
-		return nil, err
+func (r *runner) Run(ctx context.Context, cmd *transport.Cmd, ep *transport.Endpoint, auth transport.AuthMethod) error {
+	// TODO: Use the ctx to set deadlines on the TCP connection.
+	switch transport.GitService(cmd.Path) {
+	case transport.UploadPackService, transport.ReceivePackService:
+		// do nothing
+	default:
+		return transport.ErrUnsupportedService
 	}
 
-	return c, nil
+	if len(cmd.Args) < 2 {
+		return fmt.Errorf("git: missing repository path")
+	}
+
+	s := &session{}
+	s.command = cmd.Path
+	s.endpoint = ep
+	for _, env := range cmd.Env {
+		if val, ok := strings.CutPrefix(env, "GIT_PROTOCOL="); ok {
+			s.params = strings.Split(val, ":")
+			break
+		}
+	}
+	if err := s.connect(); err != nil {
+		return err
+	}
+
+	cmd.Start = s.Start
+	cmd.StderrPipe = s.StderrPipe
+	cmd.StdinPipe = s.StdinPipe
+	cmd.StdoutPipe = s.StdoutPipe
+	cmd.Close = s.Close
+	cmd.Sys = s
+
+	return nil
 }
 
-type command struct {
+type session struct {
 	conn      net.Conn
 	connected bool
 	command   string
@@ -42,41 +70,41 @@ type command struct {
 }
 
 // Start executes the command sending the required message to the TCP connection
-func (c *command) Start() error {
+func (s *session) Start() error {
 	req := packp.GitProtoRequest{
-		RequestCommand: c.command,
-		Pathname:       c.endpoint.Path,
-		ExtraParams:    c.params,
+		RequestCommand: s.command,
+		Pathname:       s.endpoint.Path,
+		ExtraParams:    s.params,
 	}
 
-	host := c.endpoint.Host
-	if c.endpoint.Port != DefaultPort {
-		host = net.JoinHostPort(c.endpoint.Host, strconv.Itoa(c.endpoint.Port))
+	host := s.endpoint.Host
+	if s.endpoint.Port != DefaultPort {
+		host = net.JoinHostPort(s.endpoint.Host, strconv.Itoa(s.endpoint.Port))
 	}
 
 	req.Host = host
 
-	return req.Encode(c.conn)
+	return req.Encode(s.conn)
 }
 
-func (c *command) connect() error {
-	if c.connected {
+func (s *session) connect() error {
+	if s.connected {
 		return transport.ErrAlreadyConnected
 	}
 
 	var err error
-	c.conn, err = net.Dial("tcp", c.getHostWithPort())
+	s.conn, err = net.Dial("tcp", s.getHostWithPort())
 	if err != nil {
 		return err
 	}
 
-	c.connected = true
+	s.connected = true
 	return nil
 }
 
-func (c *command) getHostWithPort() string {
-	host := c.endpoint.Host
-	port := c.endpoint.Port
+func (s *session) getHostWithPort() string {
+	host := s.endpoint.Host
+	port := s.endpoint.Port
 	if port <= 0 {
 		port = DefaultPort
 	}
@@ -85,28 +113,28 @@ func (c *command) getHostWithPort() string {
 }
 
 // StderrPipe git protocol doesn't have any dedicated error channel
-func (c *command) StderrPipe() (io.Reader, error) {
+func (s *session) StderrPipe() (io.Reader, error) {
 	return nil, nil
 }
 
 // StdinPipe returns the underlying connection as WriteCloser, wrapped to prevent
 // call to the Close function from the connection, a command execution in git
 // protocol can't be closed or killed
-func (c *command) StdinPipe() (io.WriteCloser, error) {
-	return ioutil.WriteNopCloser(c.conn), nil
+func (s *session) StdinPipe() (io.WriteCloser, error) {
+	return ioutil.WriteNopCloser(s.conn), nil
 }
 
 // StdoutPipe returns the underlying connection as Reader
-func (c *command) StdoutPipe() (io.Reader, error) {
-	return c.conn, nil
+func (s *session) StdoutPipe() (io.Reader, error) {
+	return s.conn, nil
 }
 
 // Close closes the TCP connection and connection.
-func (c *command) Close() error {
-	if !c.connected {
+func (s *session) Close() error {
+	if !s.connected {
 		return nil
 	}
 
-	c.connected = false
-	return c.conn.Close()
+	s.connected = false
+	return s.conn.Close()
 }

@@ -151,60 +151,50 @@ type Session interface {
 	Push(ctx context.Context, req *PushRequest) error
 }
 
-// Commander creates Command instances. This is the main entry point for
-// transport implementations.
-type Commander interface {
-	// Connect creates a new Command for the given git command and
-	// endpoint. cmd can be git-upload-pack or git-receive-pack. An
-	// error should be returned if the endpoint is not supported or the
-	// command cannot be created (e.g. binary does not exist, connection
-	// cannot be established).
-	Command(ctx context.Context, cmd string, ep *Endpoint, auth AuthMethod, params ...string) (Command, error)
+// Runner represents a transport that can run commands for a given endpoint and
+// auth.
+type Runner interface {
+	// Run runs the command for the given endpoint and auth method. It mutates
+	// the passed cmd to set its methods and Sys field as needed by the
+	// transport implementation.
+	Run(ctx context.Context, cmd *Cmd, ep *Endpoint, auth AuthMethod) error
 }
 
-// Command is used for a single command execution.
-// This interface is modeled after exec.Cmd and ssh.Session in the standard
-// library.
-type Command interface {
-	// StderrPipe returns a pipe that will be connected to the command's
-	// standard error when the command starts. It should not be called after
-	// Start.
-	StderrPipe() (io.Reader, error)
-	// StdinPipe returns a pipe that will be connected to the command's
-	// standard input when the command starts. It should not be called after
-	// Start. The pipe should be closed when no more input is expected.
-	StdinPipe() (io.WriteCloser, error)
-	// StdoutPipe returns a pipe that will be connected to the command's
-	// standard output when the command starts. It should not be called after
-	// Start.
-	StdoutPipe() (io.Reader, error)
-	// Start starts the specified command. It does not wait for it to
-	// complete.
-	Start() error
-	// Close closes the command and releases any resources used by it. It
-	// will block until the command exits.
-	Close() error
+// Cmd represents a command that can be started. The [Cmd] type is modeled
+// after [exec.Cmd] but is simplified to only the methods needed by go-git.
+type Cmd struct {
+	StderrPipe func() (io.Reader, error)
+	StdinPipe  func() (io.WriteCloser, error)
+	StdoutPipe func() (io.Reader, error)
+	Start      func() error
+	Close      func() error
+	Sys        interface{} // underlying type depends on the transport implementation
+
+	Path string
+	Args []string
+	Env  []string
 }
 
-// CommandKiller expands the Command interface, enabling it for being killed.
-type CommandKiller interface {
-	// Kill and close the session whatever the state it is. It will block until
-	// the command is terminated.
-	Kill() error
+// Command creates a new [Cmd] instance.
+func Command(name string, args ...string) *Cmd {
+	return &Cmd{
+		Path: name,
+		Args: append([]string{name}, args...),
+	}
 }
 
 type client struct {
-	cmdr Commander
+	runr Runner
 }
 
 // NewPackTransport creates a new client using the given Commander.
-func NewPackTransport(runner Commander) Transport {
+func NewPackTransport(runner Runner) Transport {
 	return &client{runner}
 }
 
 // NewSession returns a new session for an endpoint.
 func (c *client) NewSession(st storage.Storer, ep *Endpoint, auth AuthMethod) (Session, error) {
-	return NewPackSession(st, ep, auth, c.cmdr)
+	return NewPackSession(st, ep, auth, c.runr)
 }
 
 // SupportedProtocols returns a list of supported Git protocol versions by

@@ -49,7 +49,7 @@ func (s *UploadPackSuite) TestNonExistentCommand() {
 	client := DefaultTransport
 	session, err := client.NewSession(s.Storer, s.Endpoint, s.EmptyAuth)
 	s.NoError(err)
-	conn, err := session.Handshake(context.TODO(), transport.Service("git-fake-command"))
+	conn, err := session.Handshake(context.TODO(), transport.GitService("git-fake-command"))
 	s.ErrorContains(err, "unsupported")
 	s.Nil(conn)
 	s.Error(err)
