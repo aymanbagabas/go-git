@@ -92,7 +92,11 @@ func SendPack(
 		return fmt.Errorf("packfile is required for push request with new objects")
 	}
 
-	caps := sess.Capabilities()
+	caps, err := Capabilities(sess)
+	if err != nil {
+		return err
+	}
+
 	upreq := buildUpdateRequests(caps, req)
 	if err := upreq.Encode(writer); err != nil {
 		return err

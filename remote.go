@@ -117,7 +117,7 @@ func (r *Remote) PushContext(ctx context.Context, o *PushOptions) (err error) {
 		return err
 	}
 
-	rRefs, err := s.GetRemoteRefs(ctx)
+	rRefs, err := transport.GetRemoteRefs(ctx, s)
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,10 @@ func (r *Remote) sendPack(ctx context.Context, sess transport.Session, remoteRef
 	}
 
 	// TODO: support delete-refs
-	caps := sess.Capabilities() // server capabilities
+	caps, err := transport.Capabilities(sess) // server capabilities
+	if err != nil {
+		return err
+	}
 	if isDelete && !caps.Supports(capability.DeleteRefs) {
 		return ErrDeleteRefNotSupported
 	}
@@ -384,11 +387,16 @@ func (r *Remote) fetch(ctx context.Context, o *FetchOptions) (sto storer.Referen
 		return nil, err
 	}
 
-	if err := r.isSupportedRefSpec(o.RefSpecs, sess.Capabilities()); err != nil {
+	caps, err := transport.Capabilities(sess)
+	if err != nil {
 		return nil, err
 	}
 
-	rRefs, err := sess.GetRemoteRefs(ctx)
+	if err := r.isSupportedRefSpec(o.RefSpecs, caps); err != nil {
+		return nil, err
+	}
+
+	rRefs, err := transport.GetRemoteRefs(ctx, sess)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +444,7 @@ func (r *Remote) fetch(ctx context.Context, o *FetchOptions) (sto storer.Referen
 			Filter:      o.Filter,
 		}
 
-		if err := sess.Fetch(ctx, req); err != nil && !errors.Is(err, transport.ErrNoChange) {
+		if err := transport.Fetch(ctx, sess, req); err != nil && !errors.Is(err, transport.ErrNoChange) {
 			// Note: We receive ErrNoChange when remote is the same as local. At
 			// this point, we have everything we're asking for.
 			return nil, err
@@ -1258,7 +1266,7 @@ func (r *Remote) list(ctx context.Context, o *ListOptions) (rfs []*plumbing.Refe
 
 	defer ioutil.CheckClose(conn, &err)
 
-	allRefs, err := s.GetRemoteRefs(ctx)
+	allRefs, err := transport.GetRemoteRefs(ctx, s)
 	if err != nil {
 		return nil, err
 	}
@@ -1325,7 +1333,11 @@ func pushHashes(
 	allDelete bool,
 	o *PushOptions,
 ) error {
-	useRefDeltas := !sess.Capabilities().Supports(capability.OFSDelta)
+	caps, err := transport.Capabilities(sess)
+	if err != nil {
+		return err
+	}
+	useRefDeltas := !caps.Supports(capability.OFSDelta)
 	rd, wr := io.Pipe()
 
 	config, err := s.Config()
@@ -1359,7 +1371,7 @@ func pushHashes(
 		close(done)
 	}
 
-	if err := sess.Push(ctx, req); err != nil {
+	if err := transport.Push(ctx, sess, req); err != nil {
 		// close the pipe to unlock encode write
 		_ = rd.Close()
 		return err

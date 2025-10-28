@@ -8,6 +8,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 
@@ -121,34 +122,69 @@ type Session interface {
 	// this to send the protocol version of the client and any other extra parameters.
 	Handshake(ctx context.Context, service Service, params ...string) (Conn, error)
 
-	// Close closes the session and any underlying resources.
-	Close() error
-
-	// Capabilities returns the list of capabilities supported by the server.
-	Capabilities() *capability.List
-
-	// Version returns the Git protocol version the server supports.
-	Version() protocol.Version
-
 	// StatelessRPC indicates that the connection is a half-duplex connection
 	// and should operate in half-duplex mode i.e. performs a single read-write
 	// cycle. This fits with the HTTP POST request process where session may
 	// read the request, write a response, and exit.
 	StatelessRPC() bool
 
-	// GetRemoteRefs returns the references advertised by the remote.
-	// Using protocol v0 or v1, this returns the references advertised by the
-	// remote during the handshake. Using protocol v2, this runs the ls-refs
-	// command on the remote.
-	// This will error if the session is not already established using
-	// Handshake.
-	GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference, error)
+	// Close closes the session and any underlying resources.
+	Close() error
+}
 
-	// Fetch sends a fetch-pack request to the server.
-	Fetch(ctx context.Context, req *FetchRequest) error
+// Capabilities returns the list of capabilities supported by the server.
+func Capabilities(sess Session) (*capability.List, error) {
+	if s, ok := sess.(interface {
+		Capabilities() *capability.List
+	}); ok {
+		return s.Capabilities(), nil
+	}
+	return nil, fmt.Errorf("transport: session does not implement Capabilities")
+}
 
-	// Push sends a send-pack request to the server.
-	Push(ctx context.Context, req *PushRequest) error
+// Version returns the protocol version supported by the server.
+func Version(sess Session) (protocol.Version, error) {
+	if s, ok := sess.(interface {
+		Version() protocol.Version
+	}); ok {
+		return s.Version(), nil
+	}
+	return protocol.V0, fmt.Errorf("transport: session does not implement Version")
+}
+
+// GetRemoteRefs returns the references advertised by the remote.
+// Using protocol v0 or v1, this returns the references advertised by the
+// remote during the handshake. Using protocol v2, this runs the ls-refs
+// command on the remote.
+// This will error if the session is not already established using
+// Handshake.
+func GetRemoteRefs(ctx context.Context, sess Session) ([]*plumbing.Reference, error) {
+	if s, ok := sess.(interface {
+		GetRemoteRefs(context.Context) ([]*plumbing.Reference, error)
+	}); ok {
+		return s.GetRemoteRefs(ctx)
+	}
+	return nil, fmt.Errorf("transport: session does not implement GetRemoteRefs")
+}
+
+// Fetch sends a fetch-pack request to the server.
+func Fetch(ctx context.Context, sess Session, req *FetchRequest) error {
+	if s, ok := sess.(interface {
+		Fetch(context.Context, *FetchRequest) error
+	}); ok {
+		return s.Fetch(ctx, req)
+	}
+	return fmt.Errorf("transport: session does not implement Fetch")
+}
+
+// Push sends a send-pack request to the server.
+func Push(ctx context.Context, sess Session, req *PushRequest) error {
+	if s, ok := sess.(interface {
+		Push(context.Context, *PushRequest) error
+	}); ok {
+		return s.Push(ctx, req)
+	}
+	return fmt.Errorf("transport: session does not implement Push")
 }
 
 // Runner represents a transport that can run commands for a given endpoint and

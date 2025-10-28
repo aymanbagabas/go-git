@@ -31,7 +31,10 @@ func NegotiatePack(
 ) (shallowInfo *packp.ShallowUpdate, err error) {
 	reader = ioutil.NewContextReader(ctx, reader)
 	writer = ioutil.NewContextWriteCloser(ctx, writer)
-	caps := sess.Capabilities()
+	caps, err := Capabilities(sess)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create upload-request
 	upreq := packp.NewUploadRequest()

@@ -32,7 +32,7 @@ func (s *UploadPackSuite) TestAdvertisedReferencesEmpty() {
 	s.Require().NoError(err)
 	defer func() { s.Require().Nil(r.Close()) }()
 
-	ar, err := r.GetRemoteRefs(context.TODO())
+	ar, err := transport.GetRemoteRefs(context.TODO(), r)
 	s.Require().ErrorIs(err, transport.ErrEmptyRemoteRepository)
 	s.Require().Nil(ar)
 }
@@ -51,10 +51,10 @@ func (s *UploadPackSuite) TestCallAdvertisedReferenceTwice() {
 	s.Require().NoError(err)
 	defer func() { s.Require().Nil(r.Close()) }()
 
-	ar1, err := r.GetRemoteRefs(context.TODO())
+	ar1, err := transport.GetRemoteRefs(context.TODO(), r)
 	s.Require().NoError(err)
 	s.Require().NotNil(ar1)
-	ar2, err := r.GetRemoteRefs(context.TODO())
+	ar2, err := transport.GetRemoteRefs(context.TODO(), r)
 	s.Require().NoError(err)
 	s.Require().Equal(ar1, ar2)
 }
@@ -67,10 +67,12 @@ func (s *UploadPackSuite) TestDefaultBranch() {
 	s.Require().NoError(err)
 	defer func() { s.Require().Nil(r.Close()) }()
 
-	info, err := r.GetRemoteRefs(ctx)
+	info, err := transport.GetRemoteRefs(ctx, r)
 	s.Require().NoError(err)
 	s.Require().NotNil(info)
-	symrefs := r.Capabilities().Get(capability.SymRef)
+	caps, err := transport.Capabilities(r)
+	s.Require().NoError(err)
+	symrefs := caps.Get(capability.SymRef)
 	s.Require().Len(symrefs, 1)
 	s.Require().Equal("HEAD:refs/heads/master", symrefs[0])
 }
@@ -82,10 +84,12 @@ func (s *UploadPackSuite) TestAdvertisedReferencesFilterUnsupported() {
 	s.Require().NoError(err)
 	defer func() { s.Require().Nil(r.Close()) }()
 
-	info, err := r.GetRemoteRefs(context.TODO())
+	info, err := transport.GetRemoteRefs(context.TODO(), r)
 	s.Require().NoError(err)
 	s.Require().NotNil(info)
-	s.Require().True(r.Capabilities().Supports(capability.MultiACK))
+	caps, err := transport.Capabilities(r)
+	s.Require().NoError(err)
+	s.Require().True(caps.Supports(capability.MultiACK))
 }
 
 func (s *UploadPackSuite) TestCapabilities() {
@@ -95,10 +99,12 @@ func (s *UploadPackSuite) TestCapabilities() {
 	s.Require().NoError(err)
 	defer func() { s.Require().Nil(r.Close()) }()
 
-	info, err := r.GetRemoteRefs(context.TODO())
+	info, err := transport.GetRemoteRefs(context.TODO(), r)
 	s.Require().NoError(err)
 	s.Require().NotNil(info)
-	s.Require().Len(r.Capabilities().Get(capability.Agent), 1)
+	caps, err := transport.Capabilities(r)
+	s.Require().NoError(err)
+	s.Require().Len(caps.Get(capability.Agent), 1)
 }
 
 func (s *UploadPackSuite) TestUploadPack() {
@@ -112,7 +118,7 @@ func (s *UploadPackSuite) TestUploadPack() {
 	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
-	err = r.Fetch(context.Background(), req)
+	err = transport.Fetch(context.Background(), r, req)
 	s.Require().NoError(err)
 
 	afterCount := s.countObjects(s.Storer)
@@ -130,14 +136,14 @@ func (s *UploadPackSuite) TestUploadPackWithContext() {
 	s.Require().NoError(err)
 	defer func() { s.Require().Nil(r.Close()) }()
 
-	info, err := r.GetRemoteRefs(context.TODO())
+	info, err := transport.GetRemoteRefs(context.TODO(), r)
 	s.Require().NoError(err)
 	s.Require().NotNil(info)
 
 	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
-	err = r.Fetch(ctx, req)
+	err = transport.Fetch(ctx, r, req)
 	s.Require().NotNil(err)
 }
 
@@ -150,7 +156,7 @@ func (s *UploadPackSuite) TestUploadPackWithContextOnRead() {
 	s.Require().NoError(err)
 	defer func() { s.Require().Nil(r.Close()) }()
 
-	info, err := r.GetRemoteRefs(context.TODO())
+	info, err := transport.GetRemoteRefs(context.TODO(), r)
 	s.Require().NoError(err)
 	s.Require().NotNil(info)
 
@@ -158,7 +164,7 @@ func (s *UploadPackSuite) TestUploadPackWithContextOnRead() {
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
 	cancel()
-	err = r.Fetch(ctx, req)
+	err = transport.Fetch(ctx, r, req)
 	s.Require().NotNil(err)
 }
 
@@ -169,7 +175,7 @@ func (s *UploadPackSuite) TestUploadPackFull() {
 	s.Require().NoError(err)
 	defer func() { s.Require().Nil(r.Close()) }()
 
-	info, err := r.GetRemoteRefs(context.TODO())
+	info, err := transport.GetRemoteRefs(context.TODO(), r)
 	s.Require().NoError(err)
 	s.Require().NotNil(info)
 
@@ -177,7 +183,7 @@ func (s *UploadPackSuite) TestUploadPackFull() {
 	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
-	err = r.Fetch(context.Background(), req)
+	err = transport.Fetch(context.Background(), r, req)
 	s.Require().NoError(err)
 
 	afterCount := s.countObjects(s.Storer)
@@ -195,7 +201,7 @@ func (s *UploadPackSuite) TestUploadPackInvalidReq() {
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 	// Invalid capabilities are now handled by the transport layer
 
-	err = r.Fetch(context.Background(), req)
+	err = transport.Fetch(context.Background(), r, req)
 	s.Require().NoError(err) // Should succeed as invalid capabilities are handled internally
 }
 
@@ -210,7 +216,7 @@ func (s *UploadPackSuite) TestUploadPackNoChanges() {
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 	req.Haves = append(req.Haves, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
-	err = r.Fetch(context.Background(), req)
+	err = transport.Fetch(context.Background(), r, req)
 	s.Require().ErrorIs(err, transport.ErrNoChange)
 }
 
@@ -226,7 +232,7 @@ func (s *UploadPackSuite) TestUploadPackMulti() {
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 	req.Wants = append(req.Wants, plumbing.NewHash("e8d3ffab552895c19b9fcf7aa264d277cde33881"))
 
-	err = r.Fetch(context.Background(), req)
+	err = transport.Fetch(context.Background(), r, req)
 	s.Require().NoError(err)
 
 	afterCount := s.countObjects(s.Storer)
@@ -245,7 +251,7 @@ func (s *UploadPackSuite) TestUploadPackPartial() {
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 	req.Haves = append(req.Haves, plumbing.NewHash("918c48b83bd081e863dbe1b80f8998f058cd8294"))
 
-	err = r.Fetch(context.Background(), req)
+	err = transport.Fetch(context.Background(), r, req)
 	s.Require().NoError(err)
 
 	afterCount := s.countObjects(s.Storer)
@@ -262,7 +268,7 @@ func (s *UploadPackSuite) TestFetchError() {
 	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("1111111111111111111111111111111111111111"))
 
-	err = r.Fetch(context.Background(), req)
+	err = transport.Fetch(context.Background(), r, req)
 	s.Require().NotNil(err)
 
 	// XXX: We do not test Close error, since implementations might return

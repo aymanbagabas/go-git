@@ -27,7 +27,10 @@ func FetchPack(
 	// Do we have sideband enabled?
 	var demuxer *sideband.Demuxer
 	var reader io.Reader = packf
-	caps := sess.Capabilities()
+	caps, err := Capabilities(sess)
+	if err != nil {
+		return err
+	}
 	if caps.Supports(capability.Sideband64k) {
 		demuxer = sideband.NewDemuxer(sideband.Sideband64k, reader)
 	} else if caps.Supports(capability.Sideband) {

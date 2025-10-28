@@ -56,14 +56,14 @@ func (s *ProxySuite) TestAdvertisedReferencesHTTP() {
 	dotgit := test.PrepareRepository(s.T(), fixtures.Basic().One(), base, "basic.git")
 	st := filesystem.NewStorage(dotgit, nil)
 
-	session, err := client.NewSession(st, endpoint, nil)
+	sess, err := client.NewSession(st, endpoint, nil)
 	s.Require().NoError(err)
-	_, err = session.Handshake(context.Background(), transport.UploadPackService)
+	_, err = sess.Handshake(context.Background(), transport.UploadPackService)
 	s.Require().NoError(err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	info, err := session.GetRemoteRefs(ctx)
+	info, err := transport.GetRemoteRefs(ctx, sess)
 	s.NoError(err)
 	s.NotNil(info)
 
@@ -92,14 +92,14 @@ func (s *ProxySuite) TestAdvertisedReferencesHTTPS() {
 	dotgit := test.PrepareRepository(s.T(), fixtures.Basic().One(), s.T().TempDir(), "basic.git")
 	st := filesystem.NewStorage(dotgit, nil)
 
-	session, err := client.NewSession(st, endpoint, nil)
+	sess, err := client.NewSession(st, endpoint, nil)
 	s.Require().NoError(err)
-	_, err = session.Handshake(context.Background(), transport.UploadPackService)
+	_, err = sess.Handshake(context.Background(), transport.UploadPackService)
 	s.Require().NoError(err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	info, err := session.GetRemoteRefs(ctx)
+	info, err := transport.GetRemoteRefs(ctx, sess)
 	s.NoError(err)
 	s.NotNil(info)
 

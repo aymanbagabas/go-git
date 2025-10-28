@@ -51,34 +51,34 @@ func (s *UploadPackSuite) TestAdvertisedReferencesNotExists() {
 func (s *UploadPackSuite) TestAdvertisedReferencesRedirectPath() {
 	endpoint, _ := transport.NewEndpoint("https://gitlab.com/gitlab-org/gitter/webapp")
 
-	session, err := s.Client.NewSession(s.Storer, endpoint, s.EmptyAuth)
+	sess, err := s.Client.NewSession(s.Storer, endpoint, s.EmptyAuth)
 	s.NoError(err)
-	_, err = session.Handshake(context.TODO(), transport.UploadPackService)
+	_, err = sess.Handshake(context.TODO(), transport.UploadPackService)
 	s.NoError(err)
-	defer func() { s.Nil(session.Close()) }()
+	defer func() { s.Nil(sess.Close()) }()
 
-	info, err := session.GetRemoteRefs(context.TODO())
+	info, err := transport.GetRemoteRefs(context.TODO(), sess)
 	s.NoError(err)
 	s.NotNil(info)
 
-	url := session.(*HTTPSession).ep.String()
+	url := sess.(*HTTPSession).ep.String()
 	s.Equal("https://gitlab.com/gitlab-org/gitter/webapp.git", url)
 }
 
 func (s *UploadPackSuite) TestAdvertisedReferencesRedirectSchema() {
 	endpoint, _ := transport.NewEndpoint("http://github.com/git-fixtures/basic")
 
-	session, err := s.Client.NewSession(s.Storer, endpoint, s.EmptyAuth)
+	sess, err := s.Client.NewSession(s.Storer, endpoint, s.EmptyAuth)
 	s.NoError(err)
-	_, err = session.Handshake(context.TODO(), transport.UploadPackService)
+	_, err = sess.Handshake(context.TODO(), transport.UploadPackService)
 	s.NoError(err)
-	defer func() { s.Nil(session.Close()) }()
+	defer func() { s.Nil(sess.Close()) }()
 
-	info, err := session.GetRemoteRefs(context.TODO())
+	info, err := transport.GetRemoteRefs(context.TODO(), sess)
 	s.NoError(err)
 	s.NotNil(info)
 
-	url := session.(*HTTPSession).ep.String()
+	url := sess.(*HTTPSession).ep.String()
 	s.Equal("https://github.com/git-fixtures/basic", url)
 }
 
@@ -87,17 +87,17 @@ func (s *UploadPackSuite) TestAdvertisedReferencesContext() {
 	defer cancel()
 	endpoint, _ := transport.NewEndpoint("http://github.com/git-fixtures/basic")
 
-	session, err := s.Client.NewSession(s.Storer, endpoint, s.EmptyAuth)
+	sess, err := s.Client.NewSession(s.Storer, endpoint, s.EmptyAuth)
 	s.NoError(err)
-	_, err = session.Handshake(ctx, transport.UploadPackService)
+	_, err = sess.Handshake(ctx, transport.UploadPackService)
 	s.NoError(err)
-	defer func() { s.Nil(session.Close()) }()
+	defer func() { s.Nil(sess.Close()) }()
 
-	info, err := session.GetRemoteRefs(ctx)
+	info, err := transport.GetRemoteRefs(ctx, sess)
 	s.NoError(err)
 	s.NotNil(info)
 
-	url := session.(*HTTPSession).ep.String()
+	url := sess.(*HTTPSession).ep.String()
 	s.Equal("https://github.com/git-fixtures/basic", url)
 }
 
