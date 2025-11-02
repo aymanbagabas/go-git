@@ -14,56 +14,56 @@ import (
 
 // ParseURL parses a Git endpoint URL, supporting scp-like syntax and file
 // paths.
-func ParseURL(endpoint string) (*url.URL, error) {
-	if e, ok := parseSCPLike(endpoint); ok {
+func ParseURL(rawURL string) (*url.URL, error) {
+	if e, ok := parseSCPLike(rawURL); ok {
 		return e, nil
 	}
 
-	if e, ok := parseFile(endpoint); ok {
+	if e, ok := parseFile(rawURL); ok {
 		return e, nil
 	}
 
-	return parseURL(endpoint)
+	return parseURL(rawURL)
 }
 
 var fileIssueWindows = regexp.MustCompile(`^/[A-Za-z]:(/|\\)`)
 
-func parseURL(endpoint string) (*url.URL, error) {
-	if after, ok := strings.CutPrefix(endpoint, "file://"); ok {
-		endpoint = after
+func parseURL(rawURL string) (*url.URL, error) {
+	if after, ok := strings.CutPrefix(rawURL, "file://"); ok {
+		rawURL = after
 
 		// When triple / is used, the path in Windows may end up having an
 		// additional / resulting in "/C:/Dir".
 		if runtime.GOOS == "windows" &&
-			fileIssueWindows.MatchString(endpoint) {
-			endpoint = endpoint[1:]
+			fileIssueWindows.MatchString(rawURL) {
+			rawURL = rawURL[1:]
 		}
 		return &url.URL{
 			Scheme: "file",
-			Path:   endpoint,
+			Path:   rawURL,
 		}, nil
 	}
 
-	u, err := url.Parse(endpoint)
+	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
 	}
 
 	if !u.IsAbs() {
 		return nil, plumbing.NewPermanentError(fmt.Errorf(
-			"invalid endpoint: %s", endpoint,
+			"invalid endpoint: %s", rawURL,
 		))
 	}
 
 	return u, nil
 }
 
-func parseSCPLike(endpoint string) (*url.URL, bool) {
-	if giturl.MatchesScheme(endpoint) || !giturl.MatchesScpLike(endpoint) {
+func parseSCPLike(rawURL string) (*url.URL, bool) {
+	if giturl.MatchesScheme(rawURL) || !giturl.MatchesScpLike(rawURL) {
 		return nil, false
 	}
 
-	user, host, port, path := giturl.FindScpLikeComponents(endpoint)
+	user, host, port, path := giturl.FindScpLikeComponents(rawURL)
 	if port != "" {
 		host = net.JoinHostPort(host, port)
 	}
@@ -76,12 +76,12 @@ func parseSCPLike(endpoint string) (*url.URL, bool) {
 	}, true
 }
 
-func parseFile(endpoint string) (*url.URL, bool) {
-	if giturl.MatchesScheme(endpoint) {
+func parseFile(rawURL string) (*url.URL, bool) {
+	if giturl.MatchesScheme(rawURL) {
 		return nil, false
 	}
 
-	path := endpoint
+	path := rawURL
 	return &url.URL{
 		Scheme: "file",
 		Path:   path,

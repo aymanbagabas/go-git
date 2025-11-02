@@ -4,10 +4,19 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
+	"os"
 	"sync"
+	"time"
 
+	"github.com/go-git/go-git/v6/plumbing/format/pktline"
 	"github.com/go-git/go-git/v6/plumbing/protocol"
 )
+
+// DefaultFileTransport is the default file transport.
+var DefaultFileTransport = &FileTransport{
+	Loader: DefaultLoader,
+}
 
 // FileTransport is the transport mechanism for local file system Git
 // repositories.
@@ -15,8 +24,17 @@ type FileTransport struct {
 	Loader Loader
 }
 
+var _ Transport = &FileTransport{}
+
+// Clone returns a new copy of the transport.
+func (t *FileTransport) Clone() *FileTransport {
+	return &FileTransport{
+		Loader: t.Loader,
+	}
+}
+
 // Connect connects to a local file system Git repository.
-func (t *FileTransport) Connect(ctx context.Context, cmd *Cmd) (Conn, error) {
+func (t *FileTransport) Connect(ctx context.Context, cmd *Cmd) (net.Conn, error) {
 	if t.Loader == nil {
 		panic("file transport requires a Loader")
 	}
@@ -30,7 +48,10 @@ func (t *FileTransport) Connect(ctx context.Context, cmd *Cmd) (Conn, error) {
 		gitProto = protocol.FormatVersion(cmd.Proto)
 	}
 
-	c := newFileConn()
+	c, err := newFileConn(cmd.URL.Path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file connection: %w", err)
+	}
 
 	switch cmd.Service {
 	case ServiceUploadPack:
@@ -42,13 +63,12 @@ func (t *FileTransport) Connect(ctx context.Context, cmd *Cmd) (Conn, error) {
 			if err := UploadPack(
 				ctx,
 				st,
-				io.NopCloser(c.stdin),
-				c.stdout,
+				io.NopCloser(c.input),
+				c.output,
 				opts,
 			); err != nil {
 				// Write the error to the stderr pipe and close the command.
-				// TODO: write pktline error directly
-				_, _ = fmt.Fprintln(c.stderr, err)
+				_, _ = pktline.WriteError(c.output, err)
 				_ = c.Close()
 			}
 		}()
@@ -61,13 +81,12 @@ func (t *FileTransport) Connect(ctx context.Context, cmd *Cmd) (Conn, error) {
 			if err := ReceivePack(
 				ctx,
 				st,
-				io.NopCloser(c.stdin),
-				c.stdout,
+				io.NopCloser(c.input),
+				c.output,
 				opts,
 			); err != nil {
 				// Write the error to the stderr pipe and close the command.
-				// TODO: write pktline error directly
-				_, _ = fmt.Fprintln(c.stderr, err)
+				_, _ = pktline.WriteError(c.output, err)
 				_ = c.Close()
 			}
 		}()
@@ -78,48 +97,40 @@ func (t *FileTransport) Connect(ctx context.Context, cmd *Cmd) (Conn, error) {
 	return c, nil
 }
 
+// NewSession implements Transport.
+func (t *FileTransport) NewSession(ctx context.Context, cmd *Cmd) (Session, error) {
+	c, err := t.Connect(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewPackSession(ctx, c, cmd)
+}
+
 // FileConn is a connection to a local file system Git repository.
 type FileConn struct {
-	stdin   *io.PipeReader
-	stdinW  *io.PipeWriter
-	stdout  *io.PipeWriter
-	stdoutR *io.PipeReader
-	stderr  *io.PipeWriter
-	stderrR *io.PipeReader
+	input   *os.File
+	inputW  *os.File
+	output  *os.File
+	outputR *os.File
 
 	childIOFiles  []io.Closer
 	parentIOFiles []io.Closer
 
-	closed bool
+	repoPath string
+	closed   bool
 
 	mu sync.Mutex
 }
 
-// IsStateless returns whether the connection is stateless.
-func (c *FileConn) IsStateless() bool {
-	return false
-}
-
 // Read reads data from the connection.
 func (c *FileConn) Read(p []byte) (n int, err error) {
-	return c.stdoutR.Read(p)
+	return c.outputR.Read(p)
 }
 
 // Write writes data to the connection.
 func (c *FileConn) Write(p []byte) (n int, err error) {
-	return c.stdinW.Write(p)
-}
-
-func (c *FileConn) StdinPipe() (io.WriteCloser, error) {
-	return c.stdinW, nil
-}
-
-func (c *FileConn) StdoutPipe() (io.Reader, error) {
-	return c.stdoutR, nil
-}
-
-func (c *FileConn) StderrPipe() (io.Reader, error) {
-	return c.stderrR, nil
+	return c.inputW.Write(p)
 }
 
 // Close waits for the command to exit.
@@ -138,25 +149,76 @@ func (c *FileConn) Close() (err error) {
 	return
 }
 
-func newFileConn() *FileConn {
-	c := &FileConn{}
-	stdinR, stdinW := io.Pipe()
+// SetDeadline sets the read and write deadlines associated with the connection.
+func (c *FileConn) SetDeadline(t time.Time) error {
+	if err := c.SetReadDeadline(t); err != nil {
+		return err
+	}
+	return c.SetWriteDeadline(t)
+}
 
-	c.stdin = stdinR
-	c.stdinW = stdinW
+// SetReadDeadline sets the deadline for future Read calls.
+func (c *FileConn) SetReadDeadline(t time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	stdoutR, stdoutW := io.Pipe()
-	c.stdout = stdoutW
-	c.stdoutR = stdoutR
+	return c.outputR.SetDeadline(t)
+}
 
-	stderrR, stderrW := io.Pipe()
-	c.stderr = stderrW
-	c.stderrR = stderrR
+// SetWriteDeadline sets the deadline for future Write calls.
+func (c *FileConn) SetWriteDeadline(t time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	c.childIOFiles = append(c.childIOFiles, stdinR, stdoutW, stderrW)
-	c.parentIOFiles = append(c.parentIOFiles, stdinW, stdoutR, stderrR)
+	return c.inputW.SetDeadline(t)
+}
 
-	return c
+type fileAddr string
+
+func (a fileAddr) Network() string {
+	return "file"
+}
+
+func (a fileAddr) String() string {
+	return string(a)
+}
+
+// LocalAddr returns the local network address.
+func (c *FileConn) LocalAddr() net.Addr {
+	return fileAddr(c.repoPath)
+}
+
+// RemoteAddr returns the remote network address.
+func (c *FileConn) RemoteAddr() net.Addr {
+	return fileAddr(c.repoPath)
+}
+
+func newFileConn(repoPath string) (*FileConn, error) {
+	c := &FileConn{
+		repoPath: repoPath,
+	}
+	inputR, inputW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+
+	c.input = inputR
+	c.inputW = inputW
+
+	outputR, outputW, err := os.Pipe()
+	if err != nil {
+		_ = inputR.Close()
+		_ = inputW.Close()
+		return nil, err
+	}
+
+	c.output = outputW
+	c.outputR = outputR
+
+	c.childIOFiles = append(c.childIOFiles, inputR, outputW)
+	c.parentIOFiles = append(c.parentIOFiles, inputW, outputR)
+
+	return c, nil
 }
 
 func closeDiscriptors(fds []io.Closer) {

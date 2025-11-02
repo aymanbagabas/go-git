@@ -1,6 +1,9 @@
 package transfer
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // Predefined errors for Git transfer operations.
 // TODO: add comments to each error
@@ -29,4 +32,16 @@ var (
 	// ErrPackedObjectsNotSupported is returned when the server does not support
 	// packed objects.
 	ErrPackedObjectsNotSupported = errors.New("packed objects not supported")
+	// ErrUnsupportedTransport is returned when the transport is not supported.
+	ErrUnsupportedTransport = errors.New("unsupported transport")
 )
+
+// RemoteError represents an error returned by the remote.
+type RemoteError struct {
+	Reason string
+}
+
+// Error implements the error interface.
+func (e *RemoteError) Error() string {
+	return strings.TrimSpace(e.Reason)
+}

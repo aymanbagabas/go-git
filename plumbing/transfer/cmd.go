@@ -1,7 +1,6 @@
 package transfer
 
 import (
-	"context"
 	"net/url"
 
 	"github.com/go-git/go-git/v6/plumbing/protocol"
@@ -19,27 +18,16 @@ type Cmd struct {
 	Operation string
 	// URL the repository we're targeting.
 	URL *url.URL
-	// Proto the protocol version we're using (e.g. v0, v1, v2).
+	// Proto the protocol version we're requesting (e.g. v0, v1, v2).
 	Proto protocol.Version
-	// AuthMethod the authentication method to be used.
-	AuthMethod AuthMethod
 }
 
-// NewCommand creates a new [Cmd].
-func NewCommand(service string, rawURL string) (*Cmd, error) {
-	u, err := ParseURL(rawURL)
-	if err != nil {
-		return nil, err
-	}
-
+// Command returns a new [Cmd] instance for the given service and repository
+// URL.
+func Command(svc string, u *url.URL) *Cmd {
 	return &Cmd{
-		Service: service,
+		Service: svc,
 		URL:     u,
 		Proto:   DefaultProto,
-	}, nil
-}
-
-// Connector represents a transport mechanism that can connect to a Git remote.
-type Connector interface {
-	Connect(ctx context.Context, cmd *Cmd) (Conn, error)
+	}
 }
