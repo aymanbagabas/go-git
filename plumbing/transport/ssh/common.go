@@ -107,8 +107,8 @@ func (c *command) Close() error {
 
 	c.connected = false
 
-	// XXX: If did read the full packfile, then the session might be already
-	//     closed.
+	// XXX: If we did read the full packfile, then the session might be already
+	// closed.
 	_ = c.Session.Close()
 	err := c.client.Close()
 	if errors.Is(err, net.ErrClosed) {

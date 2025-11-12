@@ -24,7 +24,7 @@ import (
 	"github.com/go-git/go-git/v6/utils/ioutil"
 )
 
-func (c *HTTPConn) fetchDumb(ctx context.Context, st storage.Storer, req *FetchRequest) error {
+func (c *HTTPSession) fetchDumb(ctx context.Context, st storage.Storer, req *FetchRequest) error {
 	if req.Depth != 0 {
 		return errors.New("dumb http protocol does not support shallow capabilities")
 	}
@@ -51,16 +51,16 @@ func (c *HTTPConn) fetchDumb(ctx context.Context, st storage.Storer, req *FetchR
 
 // fetchWalker implements the Dumb protocol for fetching objects.
 type fetchWalker struct {
-	*HTTPConn
+	*HTTPSession
 	ctx     context.Context
 	fs      billy.Filesystem
 	queue   []plumbing.Hash
 	packIdx map[plumbing.Hash]string
 }
 
-func newFetchWalker(s *HTTPConn, ctx context.Context, fs billy.Filesystem) *fetchWalker {
+func newFetchWalker(s *HTTPSession, ctx context.Context, fs billy.Filesystem) *fetchWalker {
 	walker := new(fetchWalker)
-	walker.HTTPConn = s
+	walker.HTTPSession = s
 	walker.ctx = ctx
 	walker.fs = fs
 	walker.queue = make([]plumbing.Hash, 0)

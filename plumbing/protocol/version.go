@@ -39,6 +39,12 @@ func (v Version) String() string {
 	return ""
 }
 
+// FormatVersion returns the string representation of the version suitable for
+// use in Git protocol capability advertisement.
+func FormatVersion(v Version) string {
+	return fmt.Sprintf("version=%d", v)
+}
+
 // Parse parses a string and returns the matching protocol version.
 // Unrecognised strings will return a ErrUnknownProtocol.
 func Parse(v string) (Version, error) {

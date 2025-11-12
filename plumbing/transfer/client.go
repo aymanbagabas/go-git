@@ -5,33 +5,76 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
+	"sync"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // Client is a Git client that can fetch and push to a Git server.
 type Client struct {
-	t Transport
+	// HTTP transport configurations.
+	HTTPClient       func(remoteURL *url.URL) (*http.Client, error)
+	HTTPAuthCallback func(remoteURL *url.URL, req *http.Request) error
+
+	// SSH transport configurations.
+	SSHClientConfig func(remoteURL *url.URL) (*ssh.ClientConfig, error)
+
+	// Git and SSH transport dialer configurations.
+	Dialer func(remoteURL *url.URL) (net.Dialer, error)
+
+	// File transport configurations.
+	FileLoader func(remoteURL *url.URL) (Loader, error)
+
+	mu         sync.RWMutex
+	transports map[string]func(remoteURL *url.URL) Transport
 }
 
-// NewClient creates a new Git client for the given remote url and auth. If
-// auth is nil, no authentication will be used.
-func NewClient(url *url.URL, auth AuthMethod) (*Client, error) {
-	if url == nil {
-		return nil, fmt.Errorf("url cannot be nil")
+// RegisterProtocol registers a custom transport for the given protocol.
+func (c *Client) RegisterProtocol(protocol string, transportFunc func(remoteURL *url.URL) Transport) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.transports == nil {
+		c.transports = make(map[string]func(remoteURL *url.URL) Transport)
 	}
-	t, err := GetTransport(url.Scheme)
-	if err != nil {
-		return nil, err
-	}
-	if auth != nil {
-		if ac, ok := t.(AuthMethodConfigurer); ok {
-			t, err = ac.ConfigureAuthMethod(auth)
-			if err != nil {
-				return nil, err
-			}
+	c.transports[protocol] = transportFunc
+}
+
+// Connect connects to a Git remote repository using the appropriate transport.
+func (c *Client) Connect(ctx context.Context, remoteURL *url.URL) (Runner, error) {
+	transport, ok := c.getTransport(remoteURL.Scheme, remoteURL)
+	if ok {
+		if runner, ok := transport.(Connectable); ok {
+			return runner.Connect(ctx, remoteURL)
 		}
+		return nil, fmt.Errorf("transport for protocol %q does not support Connect", remoteURL.Scheme)
 	}
-	return &Client{t: t}, nil
+
+	// Use default transports
+	panic("not implemented yet")
+}
+
+// Handshake performs the initial handshake to establish a Git pack
+// transfer session for the given remote url and command.
+func (c *Client) Handshake(ctx context.Context, remoteURL *url.URL, cmd *Cmd) (Session, error) {
+	transport, ok := c.getTransport(remoteURL.Scheme, remoteURL)
+	if ok {
+		return transport.Handshake(ctx, remoteURL, cmd)
+	}
+
+	// Use default transports
+	panic("not implemented yet")
+}
+
+// getTransport gets the transport for the given protocol.
+func (c *Client) getTransport(protocol string, remoteURL *url.URL) (Transport, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if transportFunc, ok := c.transports[protocol]; ok {
+		return transportFunc(remoteURL), true
+	}
+	return nil, false
 }
 
 // SetProxyURL sets the proxy URL for the Git client and transports.

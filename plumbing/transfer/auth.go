@@ -6,5 +6,5 @@ import "fmt"
 type AuthMethod interface {
 	fmt.Stringer
 	Name() string
-	SetAuth(t Transport) error
+	SetAuth(t Session) error
 }

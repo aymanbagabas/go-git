@@ -3,6 +3,7 @@ package git
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -15,7 +16,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/sideband"
-	"github.com/go-git/go-git/v6/plumbing/transport"
+	"github.com/go-git/go-git/v6/plumbing/transfer"
 )
 
 // SubmoduleRecursivity defines how depth will affect any submodule recursive
@@ -40,7 +41,7 @@ type CloneOptions struct {
 	// The (possibly remote) repository URL to clone from.
 	URL string
 	// Auth credentials, if required, to use with the remote repository.
-	Auth transport.AuthMethod
+	Auth transfer.AuthMethod
 	// Name of the remote to be added, by default `origin`.
 	RemoteName string
 	// Remote branch to clone.
@@ -78,7 +79,7 @@ type CloneOptions struct {
 	// CABundle specify additional ca bundle with system cert pool
 	CABundle []byte
 	// ProxyOptions provides info required for connecting to a proxy.
-	ProxyOptions transport.ProxyOptions
+	ProxyOptions ProxyOptions
 	// When the repository to clone is on the local machine, instead of
 	// using hard links, automatically setup .git/objects/info/alternates
 	// to share the objects with the source repository.
@@ -165,7 +166,7 @@ type PullOptions struct {
 	// Limit fetching to the specified number of commits.
 	Depth int
 	// Auth credentials, if required, to use with the remote repository.
-	Auth transport.AuthMethod
+	Auth transfer.AuthMethod
 	// RecurseSubmodules controls if new commits of all populated submodules
 	// should be fetched too.
 	RecurseSubmodules SubmoduleRecursivity
@@ -181,7 +182,7 @@ type PullOptions struct {
 	// CABundle specify additional ca bundle with system cert pool
 	CABundle []byte
 	// ProxyOptions provides info required for connecting to a proxy.
-	ProxyOptions transport.ProxyOptions
+	ProxyOptions ProxyOptions
 }
 
 // Validate validates the fields and sets the default values.
@@ -222,7 +223,7 @@ type FetchOptions struct {
 	// each remote branch history.
 	Depth int
 	// Auth credentials, if required, to use with the remote repository.
-	Auth transport.AuthMethod
+	Auth transfer.AuthMethod
 	// Progress is where the human readable information sent by the server is
 	// stored, if nil nothing is stored and the capability (if supported)
 	// no-progress, is sent to the server to avoid send this information.
@@ -238,7 +239,7 @@ type FetchOptions struct {
 	// CABundle specify additional ca bundle with system cert pool
 	CABundle []byte
 	// ProxyOptions provides info required for connecting to a proxy.
-	ProxyOptions transport.ProxyOptions
+	ProxyOptions ProxyOptions
 	// Prune specify that local refs that match given RefSpecs and that do
 	// not exist remotely will be removed.
 	Prune bool
@@ -266,6 +267,35 @@ func (o *FetchOptions) Validate() error {
 	return nil
 }
 
+type ProxyOptions struct {
+	URL      string
+	Username string
+	Password string
+}
+
+func (o *ProxyOptions) Validate() error {
+	if o.URL != "" {
+		_, err := url.Parse(o.URL)
+		return err
+	}
+	return nil
+}
+
+func (o *ProxyOptions) FullURL() (*url.URL, error) {
+	proxyURL, err := url.Parse(o.URL)
+	if err != nil {
+		return nil, err
+	}
+	if o.Username != "" {
+		if o.Password != "" {
+			proxyURL.User = url.UserPassword(o.Username, o.Password)
+		} else {
+			proxyURL.User = url.User(o.Username)
+		}
+	}
+	return proxyURL, nil
+}
+
 // PushOptions describes how a push should be performed.
 type PushOptions struct {
 	// RemoteName is the name of the remote to be pushed to.
@@ -282,7 +312,7 @@ type PushOptions struct {
 	// A refspec with empty src can be used to delete a reference.
 	RefSpecs []config.RefSpec
 	// Auth credentials, if required, to use with the remote repository.
-	Auth transport.AuthMethod
+	Auth transfer.AuthMethod
 	// Progress is where the human readable information sent by the server is
 	// stored, if nil nothing is stored.
 	Progress sideband.Progress
@@ -309,7 +339,7 @@ type PushOptions struct {
 	// Atomic sets option to be an atomic push
 	Atomic bool
 	// ProxyOptions provides info required for connecting to a proxy.
-	ProxyOptions transport.ProxyOptions
+	ProxyOptions ProxyOptions
 	// Quiet indicates whether the server should suppress human-readable
 	// output.
 	Quiet bool
@@ -361,7 +391,7 @@ type SubmoduleUpdateOptions struct {
 	// submodules (and so on). Until the SubmoduleRecursivity is reached.
 	RecurseSubmodules SubmoduleRecursivity
 	// Auth credentials, if required, to use with the remote repository.
-	Auth transport.AuthMethod
+	Auth transfer.AuthMethod
 	// Depth limit fetching to the specified number of commits from the tip of
 	// each remote branch history.
 	Depth int
@@ -731,7 +761,7 @@ func (o *CreateTagOptions) loadConfigTagger(r *Repository) error {
 // ListOptions describes how a remote list should be performed.
 type ListOptions struct {
 	// Auth credentials, if required, to use with the remote repository.
-	Auth transport.AuthMethod
+	Auth transfer.AuthMethod
 	// InsecureSkipTLS skips ssl verify if protocol is https
 	InsecureSkipTLS bool
 	// CABundle specify additional ca bundle with system cert pool
@@ -740,7 +770,7 @@ type ListOptions struct {
 	// remote list.
 	PeelingOption PeelingOption
 	// ProxyOptions provides info required for connecting to a proxy.
-	ProxyOptions transport.ProxyOptions
+	ProxyOptions ProxyOptions
 	// Timeout specifies the timeout in seconds for list operations
 	Timeout int
 }

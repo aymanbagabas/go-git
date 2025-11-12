@@ -43,8 +43,8 @@ func SendPack(
 	ctx context.Context,
 	st storage.Storer,
 	conn Session,
-	writer io.WriteCloser,
 	reader io.ReadCloser,
+	writer io.WriteCloser,
 	req *PushRequest,
 ) error {
 	writer = ioutil.NewContextWriteCloser(ctx, writer)

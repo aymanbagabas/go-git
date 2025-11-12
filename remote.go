@@ -2,9 +2,12 @@ package git
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -13,7 +16,7 @@ import (
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/internal/reference"
 	"github.com/go-git/go-git/v6/internal/repository"
-	"github.com/go-git/go-git/v6/internal/url"
+	giturl "github.com/go-git/go-git/v6/internal/url"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/cache"
 	"github.com/go-git/go-git/v6/plumbing/format/packfile"
@@ -22,11 +25,11 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v6/plumbing/revlist"
 	"github.com/go-git/go-git/v6/plumbing/storer"
+	"github.com/go-git/go-git/v6/plumbing/transfer"
 	"github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/storage"
 	"github.com/go-git/go-git/v6/storage/filesystem"
 	"github.com/go-git/go-git/v6/storage/memory"
-	"github.com/go-git/go-git/v6/utils/ioutil"
 )
 
 // Remote operation errors and sentinel values.
@@ -103,22 +106,18 @@ func (r *Remote) PushContext(ctx context.Context, o *PushOptions) (err error) {
 		o.RemoteURL = r.c.URLs[len(r.c.URLs)-1]
 	}
 
-	c, ep, err := newClient(o.RemoteURL, o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
+	c, ep, err := r.newClient(o.Auth, o.RemoteURL, o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
 	if err != nil {
 		return err
 	}
 
-	s, err := c.NewSession(r.s, ep, o.Auth)
+	cmd := transfer.Command(transfer.ServiceReceivePack, ep)
+	s, err := c.NewSession(ctx, cmd)
 	if err != nil {
 		return err
 	}
 
-	conn, err := s.Handshake(ctx, transport.ReceivePackService)
-	if err != nil {
-		return err
-	}
-
-	rRefs, err := conn.GetRemoteRefs(ctx)
+	rRefs, err := s.GetRemoteRefs(ctx)
 	if err != nil {
 		return err
 	}
@@ -128,10 +127,10 @@ func (r *Remote) PushContext(ctx context.Context, o *PushOptions) (err error) {
 		return err
 	}
 
-	return r.sendPack(ctx, conn, remoteRefs, o)
+	return r.sendPack(ctx, s, remoteRefs, o)
 }
 
-func (r *Remote) sendPack(ctx context.Context, conn transport.Connection, remoteRefs storer.ReferenceStorer, o *PushOptions) error {
+func (r *Remote) sendPack(ctx context.Context, conn transfer.Session, remoteRefs storer.ReferenceStorer, o *PushOptions) error {
 	isDelete := false
 	allDelete := true
 	for _, rs := range o.RefSpecs {
@@ -198,7 +197,7 @@ func (r *Remote) sendPack(ctx context.Context, conn transport.Connection, remote
 	var hashesToPush []plumbing.Hash
 	// Avoid the expensive revlist operation if we're only doing deletes.
 	if !allDelete {
-		if url.IsLocalEndpoint(o.RemoteURL) {
+		if giturl.IsLocalEndpoint(o.RemoteURL) {
 			// If we're are pushing to a local repo, it might be much
 			// faster to use a local storage layer to get the commits
 			// to ignore, when calculating the object revlist.
@@ -370,26 +369,22 @@ func (r *Remote) fetch(ctx context.Context, o *FetchOptions) (sto storer.Referen
 		o.RemoteURL = r.c.URLs[0]
 	}
 
-	c, ep, err := newClient(o.RemoteURL, o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
+	c, ep, err := r.newClient(o.Auth, o.RemoteURL, o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
 	if err != nil {
 		return nil, err
 	}
 
-	sess, err := c.NewSession(r.s, ep, o.Auth)
+	cmd := transfer.Command(transfer.ServiceUploadPack, ep)
+	sess, err := c.NewSession(ctx, cmd)
 	if err != nil {
 		return nil, err
 	}
 
-	conn, err := sess.Handshake(ctx, transport.UploadPackService)
-	if err != nil {
+	if err := r.isSupportedRefSpec(o.RefSpecs, sess.Capabilities()); err != nil {
 		return nil, err
 	}
 
-	if err := r.isSupportedRefSpec(o.RefSpecs, conn.Capabilities()); err != nil {
-		return nil, err
-	}
-
-	rRefs, err := conn.GetRemoteRefs(ctx)
+	rRefs, err := sess.GetRemoteRefs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +423,7 @@ func (r *Remote) fetch(ctx context.Context, o *FetchOptions) (sto storer.Referen
 			return nil, err
 		}
 
-		req := &transport.FetchRequest{
+		req := &transfer.FetchRequest{
 			Wants:       wants,
 			Haves:       haves,
 			Depth:       o.Depth,
@@ -437,14 +432,14 @@ func (r *Remote) fetch(ctx context.Context, o *FetchOptions) (sto storer.Referen
 			Filter:      o.Filter,
 		}
 
-		if err := conn.Fetch(ctx, req); err != nil && !errors.Is(err, transport.ErrNoChange) {
+		if err := sess.Fetch(ctx, r.s, req); err != nil && !errors.Is(err, transport.ErrNoChange) {
 			// Note: We receive ErrNoChange when remote is the same as local. At
 			// this point, we have everything we're asking for.
 			return nil, err
 		}
 	}
 
-	if err := conn.Close(); err != nil {
+	if err := sess.Close(); err != nil {
 		return nil, fmt.Errorf("error closing connection: %w", err)
 	}
 
@@ -520,18 +515,43 @@ func depthChanged(before []plumbing.Hash, s storage.Storer) (bool, error) {
 	return false, nil
 }
 
-func newClient(url string, insecure bool, cabundle []byte, proxyOpts transport.ProxyOptions) (transport.Transport, *transport.Endpoint, error) {
-	ep, err := transport.NewEndpoint(url)
+func (r *Remote) newClient(auth transfer.AuthMethod, rawURL string, insecure bool, cabundle []byte, proxyOpts ProxyOptions) (*transfer.Client, *url.URL, error) {
+	ep, err := transfer.ParseURL(rawURL)
 	if err != nil {
 		return nil, nil, err
 	}
-	ep.InsecureSkipTLS = insecure
-	ep.CaBundle = cabundle
-	ep.Proxy = proxyOpts
 
-	c, err := transport.Get(ep.Scheme)
+	c, err := transfer.NewClient(ep, auth)
 	if err != nil {
 		return nil, nil, err
+	}
+	if proxyOpts.URL != "" {
+		proxyURL, err := proxyOpts.FullURL()
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid proxy URL: %w", err)
+		}
+		if err := c.SetProxyURL(proxyURL); err != nil {
+			return nil, nil, fmt.Errorf("failed to set client proxy URL: %w", err)
+		}
+	}
+	if insecure || len(cabundle) > 0 {
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: insecure,
+		}
+		if len(cabundle) > 0 {
+			rootCAs, err := x509.SystemCertPool()
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to load system root CAs: %w", err)
+			}
+			if rootCAs == nil {
+				rootCAs = x509.NewCertPool()
+			}
+			rootCAs.AppendCertsFromPEM(cabundle)
+			tlsConfig.RootCAs = rootCAs
+		}
+		if err := c.SetTLSConfig(tlsConfig); err != nil {
+			return nil, nil, fmt.Errorf("failed to set client TLS config: %w", err)
+		}
 	}
 
 	return c, ep, err
@@ -1225,24 +1245,18 @@ func (r *Remote) list(ctx context.Context, o *ListOptions) (rfs []*plumbing.Refe
 		return nil, ErrEmptyUrls
 	}
 
-	c, ep, err := newClient(r.c.URLs[0], o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
+	c, ep, err := r.newClient(o.Auth, r.c.URLs[0], o.InsecureSkipTLS, o.CABundle, o.ProxyOptions)
 	if err != nil {
 		return nil, err
 	}
 
-	s, err := c.NewSession(r.s, ep, o.Auth)
+	cmd := transfer.Command(transfer.ServiceUploadPack, ep)
+	s, err := c.NewSession(ctx, cmd)
 	if err != nil {
 		return nil, err
 	}
 
-	conn, err := s.Handshake(ctx, transport.UploadPackService)
-	if err != nil {
-		return nil, err
-	}
-
-	defer ioutil.CheckClose(conn, &err)
-
-	allRefs, err := conn.GetRemoteRefs(ctx)
+	allRefs, err := s.GetRemoteRefs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1302,7 +1316,7 @@ func referencesToHashes(refs storer.ReferenceStorer) ([]plumbing.Hash, error) {
 
 func pushHashes(
 	ctx context.Context,
-	conn transport.Connection,
+	conn transfer.Session,
 	s storage.Storer,
 	cmds []*packp.Command,
 	hs []plumbing.Hash,
@@ -1321,7 +1335,7 @@ func pushHashes(
 	// ReceivePack fails. Otherwise the goroutine will be blocked writing
 	// to the channel.
 	done := make(chan error, 1)
-	req := &transport.PushRequest{
+	req := &transfer.PushRequest{
 		Commands: cmds,
 		Progress: o.Progress,
 		Options:  o.Options,
@@ -1344,7 +1358,7 @@ func pushHashes(
 		close(done)
 	}
 
-	if err := conn.Push(ctx, req); err != nil {
+	if err := conn.Push(ctx, s, req); err != nil {
 		// close the pipe to unlock encode write
 		_ = rd.Close()
 		return err

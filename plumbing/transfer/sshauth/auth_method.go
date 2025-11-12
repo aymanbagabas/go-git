@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/user"
-	"reflect"
 
 	sshinternal "github.com/go-git/go-git/v6/internal/ssh"
 	"github.com/go-git/go-git/v6/plumbing/transfer"
@@ -23,10 +21,10 @@ var ErrNotSSHTransport = errors.New("auth method requires SSH transport")
 // DefaultUsername is the default username used when no username is provided.
 const DefaultUsername = "git"
 
-// AuthMethod is the interface all auth methods for the ssh client
+// authMethod is the interface all auth methods for the ssh client
 // must implement. The clientConfig method returns the ssh client
 // configuration needed to establish an ssh connection.
-type AuthMethod interface {
+type authMethod interface {
 	transfer.AuthMethod
 	// ClientConfig should return a valid ssh.ClientConfig to be used to create
 	// a connection to the SSH server.
@@ -53,7 +51,7 @@ type KeyboardInteractive struct {
 }
 
 // SetAuth sets the transport authentication method to use keyboard-interactive.
-func (a *KeyboardInteractive) SetAuth(t transfer.Transport) error {
+func (a *KeyboardInteractive) SetAuth(t transfer.TransportOld) error {
 	return setSSHAuth(t, a)
 }
 
@@ -83,7 +81,7 @@ type Password struct {
 }
 
 // SetAuth sets the transport authentication method to use password.
-func (a *Password) SetAuth(t transfer.Transport) error {
+func (a *Password) SetAuth(t transfer.TransportOld) error {
 	return setSSHAuth(t, a)
 }
 
@@ -112,7 +110,7 @@ type PasswordCallback struct {
 }
 
 // SetAuth sets the transport authentication method to use password-callback.
-func (a *PasswordCallback) SetAuth(t transfer.Transport) error {
+func (a *PasswordCallback) SetAuth(t transfer.TransportOld) error {
 	return setSSHAuth(t, a)
 }
 
@@ -167,7 +165,7 @@ func NewPublicKeysFromFile(user, pemFile, password string) (*PublicKeys, error) 
 }
 
 // SetAuth sets the transport authentication method to use public-keys.
-func (a *PublicKeys) SetAuth(t transfer.Transport) error {
+func (a *PublicKeys) SetAuth(t transfer.TransportOld) error {
 	return setSSHAuth(t, a)
 }
 
@@ -189,23 +187,6 @@ func (a *PublicKeys) ClientConfig() (*ssh.ClientConfig, error) {
 	})
 }
 
-func username() (string, error) {
-	var username string
-	if user, err := user.Current(); err == nil {
-		username = user.Username
-		trace.SSH.Printf("ssh: Falling back to current user name %q", username)
-	} else {
-		username = os.Getenv("USER")
-		trace.SSH.Printf("ssh: Falling back to environment variable USER %q", username)
-	}
-
-	if username == "" {
-		return "", errors.New("failed to get username")
-	}
-
-	return username, nil
-}
-
 // PublicKeysCallback implements AuthMethod by asking a
 // ssh.agent.Agent to act as a signer.
 type PublicKeysCallback struct {
@@ -220,7 +201,7 @@ type PublicKeysCallback struct {
 func NewSSHAgentAuth(u string) (*PublicKeysCallback, error) {
 	var err error
 	if u == "" {
-		u, err = username()
+		u, err = sshinternal.OsUsername()
 		if err != nil {
 			return nil, err
 		}
@@ -238,7 +219,7 @@ func NewSSHAgentAuth(u string) (*PublicKeysCallback, error) {
 }
 
 // SetAuth sets the transport authentication method to use public-keys-callback.
-func (a *PublicKeysCallback) SetAuth(t transfer.Transport) error {
+func (a *PublicKeysCallback) SetAuth(t transfer.TransportOld) error {
 	return setSSHAuth(t, a)
 }
 
@@ -254,7 +235,7 @@ func (a *PublicKeysCallback) ClientConfig() (*ssh.ClientConfig, error) {
 	trace.SSH.Printf("ssh: %s user=%s", PublicKeysCallbackName, a.User)
 	return a.SetHostKeyCallback(&ssh.ClientConfig{
 		User: a.User,
-		Auth: []ssh.AuthMethod{tracePublicKeysCallback(a.Callback)},
+		Auth: []ssh.AuthMethod{sshinternal.TracePublicKeysCallback(a.Callback)},
 	})
 }
 
@@ -294,6 +275,7 @@ func (m *HostKeyCallbackHelper) SetHostKeyCallback(cfg *ssh.ClientConfig) (*ssh.
 			return cfg, err
 		}
 		m.HostKeyCallback = db.HostKeyCallback()
+		trace.SSH.Printf("ssh: no HostKeyCallback provided, using known_hosts file")
 	}
 
 	cfg.HostKeyCallback = m.traceHostKeyCallback
@@ -307,52 +289,15 @@ func (m *HostKeyCallbackHelper) traceHostKeyCallback(hostname string, remote net
 	return m.HostKeyCallback(hostname, remote, key)
 }
 
-func setSSHAuth(t transfer.Transport, a AuthMethod) error {
+func setSSHAuth(t transfer.TransportOld, a authMethod) error {
 	if st, ok := t.(*transfer.SSHTransport); ok {
 		cc, err := a.ClientConfig()
 		if err != nil {
 			return err
 		}
-		overrideConfig(st.ClientConfig, cc)
+		trace.SSH.Printf("ssh: overriding transport ClientConfig with auth method %s", a.Name())
+		sshinternal.OverrideConfig(cc, st.ClientConfig)
 		return nil
 	}
 	return ErrNotSSHTransport
-}
-
-func tracePublicKeysCallback(getSigners func() ([]ssh.Signer, error)) ssh.AuthMethod {
-	signers, err := getSigners()
-	if err != nil {
-		trace.SSH.Printf("ssh: error calling getSigners: %v", err)
-	}
-	if len(signers) == 0 {
-		trace.SSH.Printf("ssh: no signers found")
-	}
-	for _, s := range signers {
-		trace.SSH.Printf("ssh: found key: %s %s", s.PublicKey().Type(),
-			ssh.FingerprintSHA256(s.PublicKey()))
-	}
-
-	cb := func() ([]ssh.Signer, error) {
-		return signers, err
-	}
-	return ssh.PublicKeysCallback(cb)
-}
-
-func overrideConfig(overrides *ssh.ClientConfig, c *ssh.ClientConfig) {
-	if overrides == nil {
-		return
-	}
-
-	t := reflect.TypeOf(*c)
-	vc := reflect.ValueOf(c).Elem()
-	vo := reflect.ValueOf(overrides).Elem()
-
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		vcf := vc.FieldByName(f.Name)
-		vof := vo.FieldByName(f.Name)
-		vcf.Set(vof)
-	}
-
-	*c = vc.Interface().(ssh.ClientConfig)
 }

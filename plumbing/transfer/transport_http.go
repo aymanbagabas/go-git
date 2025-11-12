@@ -4,15 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/http/httptrace"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/format/pktline"
@@ -21,140 +17,54 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/storage"
+	"github.com/go-git/go-git/v6/utils/ioutil"
 	"github.com/go-git/go-git/v6/utils/trace"
-	"golang.org/x/net/proxy"
 )
 
 // DefaultHTTPTransport is the default HTTP transport used by go-git.
-var DefaultHTTPTransport = &HTTPTransport{
-	Client: &http.Client{
+var DefaultHTTPTransport = &HTTPClient{
+	Client: http.Client{
 		Transport: http.DefaultTransport,
 	},
 	ForceDumb: false,
 }
 
-// HTTPTransport is a mechanism to transfer Git objects and references over
+// HTTPClient is a mechanism to transfer Git objects and references over
 // HTTP/HTTPS protocols.
-type HTTPTransport struct {
+type HTTPClient struct {
 	// Client is the HTTP client used to perform requests.
-	Client *http.Client
+	http.Client
 
 	// ForceDumb forces the use of the dumb HTTP protocol even if the server
 	// advertises support for the smart HTTP protocol.
 	ForceDumb bool
+
+	// AuthCallback is a callback function that will be called before doing any
+	// request, to set authentication headers and other auth-related settings.
+	AuthCallback func(*http.Request)
 }
 
-var (
-	_ Transport            = &HTTPTransport{}
-	_ ProxyURLConfigurer   = &HTTPTransport{}
-	_ DialerConfigurer     = &HTTPTransport{}
-	_ AuthMethodConfigurer = &HTTPTransport{}
-	_ TLSConfigConfigurer  = &HTTPTransport{}
-)
+var _ Transport = &HTTPTransport{}
 
-// ConfigureDialer configures a new copy of the transport to use a custom
-// dialer.
-// It implements the [DialerConfigurer] interface.
-func (t *HTTPTransport) ConfigureDialer(dialer proxy.Dialer) (Transport, error) {
-	t2 := t.Clone()
-	if tr2, ok := t2.Client.Transport.(*http.Transport); ok {
-		tr2 = tr2.Clone()
-		tr2.Dial = dialer.Dial
-		if d, ok := dialer.(proxy.ContextDialer); ok {
-			tr2.DialContext = d.DialContext
-		}
-		t2.Client.Transport = tr2
-		return t2, nil
-	}
-	return nil, fmt.Errorf("unable to configure dialer: transport is not http.Transport")
+// HTTPTransport is a transport layer over HTTP/HTTPS protocols that can
+// establish Git pack transfer [Session]s.
+type HTTPTransport struct {
+	// Client is the HTTP client used to perform requests.
+	http.Client
+
+	// ForceDumb forces the use of the dumb HTTP protocol even if the server
+	// advertises support for the smart HTTP protocol.
+	ForceDumb bool
+
+	// AuthCallback is a callback function that will be called before doing any
+	// request, to set authentication headers and other auth-related settings.
+	AuthCallback func(*http.Request)
 }
 
-// ConfigureProxyURL configures the transport to use a proxy url.
-// It implements the [ProxyURLConfigurer] interface.
-func (t *HTTPTransport) ConfigureProxyURL(url *url.URL) (Transport, error) {
-	t2 := t.Clone()
-	if tr2, ok := t.Client.Transport.(*http.Transport); ok {
-		tr2 = tr2.Clone()
-		tr2.Proxy = http.ProxyURL(url)
-		t2.Client.Transport = tr2
-		return t2, nil
-	}
-	return nil, fmt.Errorf("unable to configure proxy url: transport is not http.Transport")
-}
-
-// ConfigureAuthMethod configures a new copy of the transport to use a custom
-// auth method.
-// It implements the [AuthMethodConfigurer] interface.
-func (t *HTTPTransport) ConfigureAuthMethod(am AuthMethod) (Transport, error) {
-	t2 := t.Clone()
-	if err := am.SetAuth(t2); err != nil {
-		return nil, err
-	}
-	return t2, nil
-}
-
-// ConfigureTLSConfig configures a new copy of the transport to use a custom
-// TLS configuration.
-// It implements the [TLSConfigConfigurer] interface.
-func (t *HTTPTransport) ConfigureTLSConfig(cfg *tls.Config) (Transport, error) {
-	t2 := t.Clone()
-	if tr2, ok := t.Client.Transport.(*http.Transport); ok {
-		tr2 = tr2.Clone()
-		tr2.TLSClientConfig = cfg
-		t2.Client.Transport = tr2
-		return t2, nil
-	}
-	return nil, fmt.Errorf("unable to configure TLS config: transport is not http.Transport")
-}
-
-// Clone returns a copy of the transport.
-func (t *HTTPTransport) Clone() *HTTPTransport {
-	if t.Client == nil {
-		t.Client = &http.Client{}
-	}
-	tr := t.Client.Transport
-	if tr2, ok := tr.(*http.Transport); ok {
-		tr = tr2.Clone()
-	}
-	t2 := &HTTPTransport{
-		Client: &http.Client{
-			Transport:     tr,
-			CheckRedirect: t.Client.CheckRedirect,
-			Jar:           t.Client.Jar,
-			Timeout:       t.Client.Timeout,
-		},
-		ForceDumb: t.ForceDumb,
-	}
-	return t2
-}
-
-// RoundTrip implements the [http.RoundTripper] interface.
-// It delegates to the underlying Transport if set, or to
-// http.DefaultTransport otherwise.
-func (t *HTTPTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if t.Client == nil {
-		t.Client = &http.Client{}
-	}
-	if t.Client.Transport == nil {
-		t.Client.Transport = http.DefaultTransport
-	}
-	return t.Client.Transport.RoundTrip(req)
-}
-
-// Connect connects to a Git repository over HTTP/HTTPS.
-func (t *HTTPTransport) Connect(ctx context.Context, cmd *Cmd) (net.Conn, error) {
-	if t.Client == nil {
-		t.Client = &http.Client{}
-	}
-	if t.Client.Transport == nil {
-		t.Client.Transport = http.DefaultTransport
-	}
-
-	client := &http.Client{
-		Transport:     t.Client.Transport,
-		CheckRedirect: t.Client.CheckRedirect,
-		Jar:           t.Client.Jar,
-		Timeout:       t.Client.Timeout,
+// Handshake implements Transport.
+func (c *HTTPTransport) Handshake(ctx context.Context, remoteURL *url.URL, cmd *Cmd) (Session, error) {
+	if c.Client.Transport == nil {
+		c.Client.Transport = http.DefaultTransport
 	}
 
 	var proto string
@@ -162,52 +72,48 @@ func (t *HTTPTransport) Connect(ctx context.Context, cmd *Cmd) (net.Conn, error)
 		proto = protocol.FormatVersion(cmd.Proto)
 	}
 
-	u := *cmd.URL
+	s := new(HTTPSession)
+	s.svc = cmd.Service
+	s.authCb = c.AuthCallback
+	s.proto = proto
+	s.url = remoteURL
+	s.client = &c.Client
+
+	u := *remoteURL
 	endpoint, err := url.JoinPath(u.String(), infoRefsPath)
 	if err != nil {
 		return nil, err
 	}
 
-	if !t.ForceDumb {
+	if !c.ForceDumb {
 		endpoint += "?service=" + cmd.Service
 	}
 
-	svc := cmd.Service
-	c := &HTTPConn{
-		client: client,
-		url:    &u,
-		svc:    svc,
-		proto:  proto,
-	}
-
-	req, err := c.newRequest(ctx, http.MethodGet, endpoint, nil)
+	req, err := newRequest(ctx, http.MethodGet, endpoint, nil, c.AuthCallback)
 	if err != nil {
 		return nil, err
 	}
 
-	c.req = req
-
-	applyHeaders(req, cmd.Service, &u, proto, !t.ForceDumb)
-	res, err := doRequest(client, req)
+	applyHeaders(req, cmd.Service, &u, proto, !c.ForceDumb)
+	res, err := doRequest(&c.Client, req)
 	if err != nil {
 		return nil, err
 	}
 
-	c.res = res
 	defer res.Body.Close() //nolint:errcheck
 
-	if !t.ForceDumb {
+	if !c.ForceDumb {
 		// Determine if the server is using the smart protocol
 		contentType := res.Header.Get("Content-Type")
 		expectedContentType := fmt.Sprintf("application/x-%s-advertisement", cmd.Service)
-		c.isSmart = strings.Contains(contentType, expectedContentType)
+		s.isSmart = strings.Contains(contentType, expectedContentType)
 	}
 
 	modifyRedirect(res, &u)
 
 	rd := bufio.NewReader(res.Body)
 	ar := packp.NewAdvRefs()
-	if c.isSmart {
+	if s.isSmart {
 		_, prefix, err := pktline.PeekLine(rd)
 		if err != nil {
 			return nil, err
@@ -223,13 +129,13 @@ func (t *HTTPTransport) Connect(ctx context.Context, cmd *Cmd) (net.Conn, error)
 				return nil, err
 			}
 
-			if reply.Service != svc {
+			if reply.Service != s.svc {
 				return nil, fmt.Errorf("unexpected service name: %w", transport.ErrInvalidResponse)
 			}
 		}
 
-		c.ver, _ = transport.DiscoverVersion(rd)
-		switch c.ver {
+		s.ver, _ = transport.DiscoverVersion(rd)
+		switch s.ver {
 		case protocol.V2:
 			return nil, transport.ErrUnsupportedVersion
 		case protocol.V1:
@@ -254,7 +160,7 @@ func (t *HTTPTransport) Connect(ctx context.Context, cmd *Cmd) (net.Conn, error)
 		ar.References = infoRefs.References
 		ar.Peeled = infoRefs.Peeled
 
-		walker := newFetchWalker(c, ctx, nil)
+		walker := newFetchWalker(s, ctx, nil)
 		head, err := walker.getHead()
 		if err != nil {
 			return nil, err
@@ -275,73 +181,62 @@ func (t *HTTPTransport) Connect(ctx context.Context, cmd *Cmd) (net.Conn, error)
 		ar.Head = &hash
 	}
 
-	c.refs = ar
-
-	return c, nil
-}
-
-// HTTPSession represents a session for a Git commands over HTTP/HTTPS.
-type HTTPSession struct {
-	c *HTTPConn
-}
-
-var _ Session = &HTTPSession{}
-
-// NewSession creates a new session for the given command.
-func (t *HTTPTransport) NewSession(ctx context.Context, cmd *Cmd) (Session, error) {
-	conn, err := t.Connect(ctx, cmd)
-	if err != nil {
-		return nil, err
-	}
-
-	httpConn, ok := conn.(*HTTPConn)
-	if !ok {
-		panic("expected *HTTPConn from Connect")
-	}
-
-	s := &HTTPSession{
-		c: httpConn,
-	}
+	s.refs = ar
 
 	return s, nil
 }
 
+// HTTPSession is a stateless established Git pack transfer [Session] over
+// HTTP/HTTPS.
+type HTTPSession struct {
+	isSmart bool // whether the connection is using the smart protocol
+	ver     protocol.Version
+	svc     string
+	refs    *packp.AdvRefs
+	authCb  func(*http.Request)
+	proto   string   // the Git-Protocol header value
+	url     *url.URL // the endpoint remote URL
+	client  *http.Client
+}
+
+var _ Session = &HTTPSession{}
+
 // Capabilities implements Session.
 func (s *HTTPSession) Capabilities() *capability.List {
-	return s.c.refs.Capabilities
+	return s.refs.Capabilities
 }
 
 // Close implements Session.
 func (s *HTTPSession) Close() error {
-	return s.c.Close()
+	return nil
 }
 
 // Fetch implements Session.
 func (s *HTTPSession) Fetch(ctx context.Context, st storage.Storer, req *FetchRequest) error {
-	if !s.c.isSmart {
-		return s.c.fetchDumb(ctx, st, req)
+	if !s.isSmart {
+		return s.fetchDumb(ctx, st, req)
 	}
 
-	// Set the context for the connection requests.
-	s.c.ctx = ctx
+	rwc := newRequester(ctx, s)
 
 	// XXX: packfile will be populated and accessible once rwc.Close() is
 	// called in NegotiatePack.
-	shallows, err := NegotiatePack(ctx, st, s, s.c, s.c, req)
+	packfile := rwc.BodyCloser()
+	shallows, err := NegotiatePack(ctx, st, s, packfile, rwc, req)
 	if err != nil {
-		if s.c.res != nil {
+		if rwc.res != nil {
 			// Make sure the response body is closed.
-			defer s.c.Close() // nolint: errcheck
+			defer packfile.Close() // nolint: errcheck
 		}
 		return err
 	}
 
-	return FetchPack(ctx, st, s, s.c, shallows, req)
+	return FetchPack(ctx, st, s, packfile, shallows, req)
 }
 
 // GetRemoteRefs implements Session.
 func (s *HTTPSession) GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference, error) {
-	if s.c.refs == nil {
+	if s.refs == nil {
 		return nil, transport.ErrEmptyRemoteRepository
 	}
 
@@ -350,20 +245,19 @@ func (s *HTTPSession) GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference,
 	// advrefs_decode.decodeFirstHash, which expects a flush-pkt instead.
 	//
 	// This logic aligns with plumbing/transport/common/common.go.
-	forPush := s.c.svc == ServiceReceivePack
-	if s.c.refs.IsEmpty() && !forPush {
+	forPush := s.svc == ServiceReceivePack
+	if s.refs.IsEmpty() && !forPush {
 		// Empty repositories are valid for git-receive-pack.
 		return nil, transport.ErrEmptyRemoteRepository
 	}
 
-	return s.c.refs.MakeReferenceSlice()
+	return s.refs.MakeReferenceSlice()
 }
 
 // Push implements Session.
 func (s *HTTPSession) Push(ctx context.Context, st storage.Storer, req *PushRequest) error {
-	// Set the context for the connection requests.
-	s.c.ctx = ctx
-	return SendPack(ctx, st, s, s.c, s.c, req)
+	rwc := newRequester(ctx, s)
+	return SendPack(ctx, st, s, rwc.BodyCloser(), rwc, req)
 }
 
 // StatelessRPC implements Session.
@@ -373,61 +267,68 @@ func (s *HTTPSession) StatelessRPC() bool {
 
 // Version implements Session.
 func (s *HTTPSession) Version() protocol.Version {
-	return s.c.ver
+	return s.ver
 }
 
-// HTTPConn is a connection to a Git repository over HTTP/HTTPS.
-type HTTPConn struct {
-	ctx     context.Context
-	client  *http.Client
-	url     *url.URL
-	svc     string
-	proto   string
-	isSmart bool // whether the connection is using the smart protocol
-	ver     protocol.Version
-	refs    *packp.AdvRefs // the advertised references
-
+// requester is a io.WriteCloser that sends an HTTP request to on close and
+// reads the response into the struct.
+type requester struct {
+	*HTTPSession
+	ctx    context.Context
 	reqBuf bytes.Buffer
 	req    *http.Request  // the last request made
 	res    *http.Response // the last response received
-	conn   net.Conn       // the underlying TCP network connection
+	url    *url.URL
 }
 
-// Read reads data from the connection.
-func (c *HTTPConn) Read(p []byte) (n int, err error) {
-	if c.res == nil {
+func newRequester(ctx context.Context, s *HTTPSession) *requester {
+	return &requester{
+		HTTPSession: s,
+		ctx:         ctx,
+	}
+}
+
+var _ io.ReadWriteCloser = &requester{}
+
+// BodyCloser returns the response body as an io.ReadCloser.
+func (r *requester) BodyCloser() io.ReadCloser {
+	return ioutil.NewReadCloser(r, ioutil.CloserFunc(func() error {
+		if r.res == nil {
+			panic("http: requester.res is accessed before requester.Close")
+		}
+		return r.res.Body.Close()
+	}))
+}
+
+// Read implements io.ReadWriteCloser.
+func (r *requester) Read(p []byte) (n int, err error) {
+	if r.res == nil {
 		panic("http: requester.Read called before requester.Close")
 	}
-	return c.res.Body.Read(p)
+	return r.res.Body.Read(p)
 }
 
-// Write writes data to the connection.
-func (c *HTTPConn) Write(p []byte) (n int, err error) {
-	return c.reqBuf.Write(p)
-}
+// Close implements io.ReadWriteCloser.
+func (r *requester) Close() (err error) {
+	defer r.reqBuf.Reset()
 
-// Close closes the connection.
-func (c *HTTPConn) Close() error {
-	defer c.reqBuf.Reset()
-
-	if c.res != nil {
-		_ = c.res.Body.Close()
+	if r.res != nil {
+		_ = r.res.Body.Close()
 	}
 
-	var err error
 	method := http.MethodPost
-	urlStr, err := url.JoinPath(c.url.String(), c.svc)
+	urlStr, err := url.JoinPath(r.url.String(), r.svc)
 	if err != nil {
 		return err
 	}
 
-	c.req, err = c.newRequest(c.ctx, method, urlStr, &c.reqBuf)
+	r.req, err = newRequest(r.ctx, method, urlStr, &r.reqBuf, r.authCb)
 	if err != nil {
 		return err
 	}
 
-	applyHeaders(c.req, c.svc, c.url, c.proto, c.isSmart)
-	c.res, err = doRequest(c.client, c.req)
+	applyHeaders(r.req, r.svc, r.url, r.proto, r.isSmart)
+	r.res, err = doRequest(r.client, r.req)
 	if err != nil {
 		return err
 	}
@@ -435,49 +336,27 @@ func (c *HTTPConn) Close() error {
 	return nil
 }
 
-// LocalAddr returns the local address of the connection.
-func (c *HTTPConn) LocalAddr() net.Addr {
-	return c.conn.LocalAddr()
-}
-
-// RemoteAddr returns the remote address of the connection.
-func (c *HTTPConn) RemoteAddr() net.Addr {
-	return c.conn.RemoteAddr()
-}
-
-// SetDeadline sets the read and write deadlines associated with the connection.
-func (c *HTTPConn) SetDeadline(t time.Time) error {
-	return c.conn.SetDeadline(t)
-}
-
-// SetReadDeadline sets the deadline for future Read calls.
-func (c *HTTPConn) SetReadDeadline(t time.Time) error {
-	return c.conn.SetReadDeadline(t)
-}
-
-// SetWriteDeadline sets the deadline for future Write calls.
-func (c *HTTPConn) SetWriteDeadline(t time.Time) error {
-	return c.conn.SetWriteDeadline(t)
-}
-
-func (c *HTTPConn) newRequest(
+func newRequest(
 	ctx context.Context,
 	method, urlStr string,
 	body io.Reader,
+	authCb func(*http.Request),
 ) (*http.Request, error) {
-	trace := &httptrace.ClientTrace{
-		GotConn: func(info httptrace.GotConnInfo) {
-			c.conn = info.Conn
-		},
-	}
-
-	ctx = httptrace.WithClientTrace(ctx, trace)
 	req, err := http.NewRequestWithContext(ctx, method, urlStr, body)
 	if err != nil {
 		return nil, err
 	}
 
+	if authCb != nil {
+		authCb(req)
+	}
+
 	return req, nil
+}
+
+// Write implements io.ReadWriteCloser.
+func (r *requester) Write(p []byte) (n int, err error) {
+	return r.reqBuf.Write(p)
 }
 
 // HTTPError is a dedicated error to return errors based on http status code.

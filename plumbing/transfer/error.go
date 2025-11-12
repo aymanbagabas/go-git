@@ -34,6 +34,8 @@ var (
 	ErrPackedObjectsNotSupported = errors.New("packed objects not supported")
 	// ErrUnsupportedTransport is returned when the transport is not supported.
 	ErrUnsupportedTransport = errors.New("unsupported transport")
+	// ErrNotEstablished is returned when the session is not established.
+	ErrNotEstablished = errors.New("session not established")
 )
 
 // RemoteError represents an error returned by the remote.

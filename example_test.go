@@ -12,7 +12,7 @@ import (
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/config"
 	"github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/transport/http"
+	"github.com/go-git/go-git/v6/plumbing/transfer/httpauth"
 	"github.com/go-git/go-git/v6/storage/memory"
 )
 
@@ -82,7 +82,7 @@ func ExamplePlainClone_usernamePassword() {
 	// Clones the repository into the given dir, just as a normal git clone does
 	_, err = git.PlainClone(dir, &git.CloneOptions{
 		URL: "https://github.com/git-fixtures/basic.git",
-		Auth: &http.BasicAuth{
+		Auth: &httpauth.BasicAuth{
 			Username: "username",
 			Password: "password",
 		},
@@ -104,7 +104,7 @@ func ExamplePlainClone_accessToken() {
 	// Clones the repository into the given dir, just as a normal git clone does
 	_, err = git.PlainClone(dir, &git.CloneOptions{
 		URL: "https://github.com/git-fixtures/basic.git",
-		Auth: &http.BasicAuth{
+		Auth: &httpauth.BasicAuth{
 			Username: "abc123", // anything except an empty string
 			Password: "github_access_token",
 		},

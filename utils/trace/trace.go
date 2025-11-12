@@ -16,6 +16,10 @@ var (
 	current atomic.Int32
 )
 
+func init() {
+	current.Store(3)
+}
+
 func newLogger() *log.Logger {
 	return log.New(os.Stderr, "", log.Ltime|log.Lmicroseconds|log.Lshortfile)
 }

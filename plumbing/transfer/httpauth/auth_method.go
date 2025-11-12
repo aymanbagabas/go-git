@@ -18,34 +18,15 @@ type BasicAuth struct {
 }
 
 // SetAuth sets the basic auth header on the transport.
-func (a *BasicAuth) SetAuth(t transfer.Transport) error {
-	if ht, ok := t.(*transfer.HTTPTransport); ok {
-		if ht.Client == nil {
-			ht.Client = &http.Client{}
-		}
-		if ht.Client.Transport == nil {
-			ht.Client.Transport = http.DefaultTransport
-		}
-		ht.Client.Transport = &basicAuthRoundTripper{
-			BasicAuth: a,
-			Transport: ht.Client.Transport,
-		}
-		return nil
+func (a *BasicAuth) SetAuth(t transfer.TransportOld) error {
+	ht, ok := t.(*transfer.HTTPTransport)
+	if a == nil || !ok {
+		return ErrNotHTTPTransport
 	}
-	return ErrNotHTTPTransport
-}
-
-type basicAuthRoundTripper struct {
-	*BasicAuth
-	Transport http.RoundTripper
-}
-
-// RoundTrip implements the [http.RoundTripper] interface.
-func (a *basicAuthRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	if a.Username != "" || a.Password != "" {
+	ht.AuthCallback = func(r *http.Request) {
 		r.SetBasicAuth(a.Username, a.Password)
 	}
-	return a.Transport.RoundTrip(r)
+	return nil
 }
 
 // Name is name of the auth
@@ -75,21 +56,15 @@ type TokenAuth struct {
 }
 
 // SetAuth sets the token auth header on the transport.
-func (a *TokenAuth) SetAuth(t transfer.Transport) error {
-	if ht, ok := t.(*transfer.HTTPTransport); ok {
-		if ht.Client == nil {
-			ht.Client = &http.Client{}
-		}
-		if ht.Client.Transport == nil {
-			ht.Client.Transport = http.DefaultTransport
-		}
-		ht.Client.Transport = &tokenAuthRoundTripper{
-			TokenAuth: a,
-			Transport: ht.Client.Transport,
-		}
-		return nil
+func (a *TokenAuth) SetAuth(t transfer.TransportOld) error {
+	ht, ok := t.(*transfer.HTTPTransport)
+	if a == nil || !ok {
+		return ErrNotHTTPTransport
 	}
-	return ErrNotHTTPTransport
+	ht.AuthCallback = func(r *http.Request) {
+		r.Header.Add("Authorization", fmt.Sprintf("Bearer %s", a.Token))
+	}
+	return nil
 }
 
 // Name is name of the auth
@@ -103,15 +78,4 @@ func (a *TokenAuth) String() string {
 		masked = "<empty>"
 	}
 	return fmt.Sprintf("%s - %s", a.Name(), masked)
-}
-
-type tokenAuthRoundTripper struct {
-	*TokenAuth
-	Transport http.RoundTripper
-}
-
-// RoundTrip implements the [http.RoundTripper] interface.
-func (a *tokenAuthRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	r.Header.Add("Authorization", fmt.Sprintf("Bearer %s", a.Token))
-	return a.Transport.RoundTrip(r)
 }
