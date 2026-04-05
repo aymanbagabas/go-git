@@ -19,7 +19,7 @@ func TestStreamSession(t *testing.T) {
 
 	pr, pw := io.Pipe()
 	rwc := &pipeRWC{Reader: pr, Writer: pw}
-	s := NewStreamSession(pr, pw, rwc.Close)
+	s := NewConn(pr, pw, rwc.Close)
 
 	go func() {
 		_, err := s.Writer().Write([]byte("hello"))
@@ -38,7 +38,7 @@ func TestStreamSession(t *testing.T) {
 func TestHTTPSession_WriteCloseRead(t *testing.T) {
 	t.Parallel()
 
-	s := NewHTTPSession(func(body io.Reader) (*http.Response, error) {
+	s := NewHTTPConn(func(body io.Reader) (*http.Response, error) {
 		data, err := io.ReadAll(body)
 		if err != nil {
 			return nil, err
@@ -64,7 +64,7 @@ func TestHTTPSession_WriteCloseRead(t *testing.T) {
 func TestHTTPSession_DoFuncError(t *testing.T) {
 	t.Parallel()
 
-	s := NewHTTPSession(func(io.Reader) (*http.Response, error) {
+	s := NewHTTPConn(func(io.Reader) (*http.Response, error) {
 		return nil, errors.New("connection refused")
 	})
 

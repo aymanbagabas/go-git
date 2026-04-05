@@ -108,7 +108,7 @@ func TestSSHTransport_Open(t *testing.T) {
 		Protocol: protocol.V0,
 	}
 
-	sess, err := tr.Open(context.Background(), req)
+	sess, err := tr.Connect(context.Background(), req)
 	require.NoError(t, err)
 	require.NotNil(t, sess)
 
@@ -146,7 +146,7 @@ func TestSSHTransport_Connect(t *testing.T) {
 	require.NotNil(t, rwc)
 
 	buf := make([]byte, 4)
-	n, err := rwc.Read(buf)
+	n, err := rwc.Reader().Read(buf)
 	require.NoError(t, err)
 	assert.Greater(t, n, 0, "should read pkt-line data from server")
 
@@ -167,7 +167,7 @@ func TestSSHTransport_NoConfig(t *testing.T) {
 		Command: "git-upload-pack",
 	}
 
-	_, err := tr.Open(context.Background(), req)
+	_, err := tr.Connect(context.Background(), req)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no ClientConfig provider")
 }

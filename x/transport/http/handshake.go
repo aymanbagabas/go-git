@@ -19,9 +19,9 @@ import (
 	transport "github.com/go-git/go-git/v6/x/transport"
 )
 
-// Handshake implements transport.PackTransport. GETs /info/refs to discover
+// Handshake implements transport.Transport. GETs /info/refs to discover
 // refs and detects smart vs dumb HTTP.
-func (t *Transport) Handshake(ctx context.Context, req *transport.Request) (transport.PackSession, error) {
+func (t *Transport) Handshake(ctx context.Context, req *transport.Request) (transport.Session, error) {
 	service := req.Command
 	baseURL := req.URL
 
@@ -78,7 +78,7 @@ func (t *Transport) Handshake(ctx context.Context, req *transport.Request) (tran
 	return handshakeDumb(resp, req, client, t.opts.Authorizer)
 }
 
-func handshakeSmart(resp *http.Response, req *transport.Request, client *http.Client, authorizer func(*http.Request) error) (transport.PackSession, error) {
+func handshakeSmart(resp *http.Response, req *transport.Request, client *http.Client, authorizer func(*http.Request) error) (transport.Session, error) {
 	defer resp.Body.Close()
 	rd := bufio.NewReader(resp.Body)
 
@@ -122,7 +122,7 @@ func handshakeSmart(resp *http.Response, req *transport.Request, client *http.Cl
 	}, nil
 }
 
-func handshakeDumb(resp *http.Response, req *transport.Request, client *http.Client, authorizer func(*http.Request) error) (transport.PackSession, error) {
+func handshakeDumb(resp *http.Response, req *transport.Request, client *http.Client, authorizer func(*http.Request) error) (transport.Session, error) {
 	defer resp.Body.Close()
 	rd := bufio.NewReader(resp.Body)
 
@@ -278,7 +278,7 @@ func (s *dumbPackSession) Push(_ context.Context, _ storage.Storer, _ *transport
 func (s *dumbPackSession) Close() error { return nil }
 
 var (
-	_ transport.PackSession   = (*smartPackSession)(nil)
-	_ transport.PackSession   = (*dumbPackSession)(nil)
-	_ transport.PackTransport = (*Transport)(nil)
+	_ transport.Session   = (*smartPackSession)(nil)
+	_ transport.Session   = (*dumbPackSession)(nil)
+	_ transport.Transport = (*Transport)(nil)
 )

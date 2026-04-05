@@ -53,20 +53,12 @@ func NewTransport(opts Options) *Transport {
 	}
 }
 
-func (t *Transport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
+func (t *Transport) Connect(ctx context.Context, req *transport.Request) (transport.Conn, error) {
 	sr, pw, closeAll, err := t.connect(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewStreamSession(sr, pw, closeAll), nil
-}
-
-func (t *Transport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
-	sr, pw, closeAll, err := t.connect(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return &streamConn{Reader: sr, Writer: pw, closeFunc: closeAll}, nil
+	return transport.NewConn(sr, pw, closeAll), nil
 }
 
 func (t *Transport) connect(ctx context.Context, req *transport.Request) (io.Reader, *io.PipeWriter, func() error, error) {

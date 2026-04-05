@@ -4,7 +4,6 @@ package git
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 
@@ -37,15 +36,7 @@ func NewTransport(opts Options) *Transport {
 	return &Transport{opts: opts}
 }
 
-func (t *Transport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
-	rwc, err := t.Connect(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return transport.NewStreamSession(rwc, ioutil.WriteNopCloser(rwc), rwc.Close), nil
-}
-
-func (t *Transport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
+func (t *Transport) Connect(ctx context.Context, req *transport.Request) (transport.Conn, error) {
 	host := req.URL.Hostname()
 	port := req.URL.Port()
 	if port == "" {
@@ -82,5 +73,5 @@ func (t *Transport) Connect(ctx context.Context, req *transport.Request) (io.Rea
 		return nil, fmt.Errorf("git: encode proto request: %w", err)
 	}
 
-	return conn, nil
+	return transport.NewConn(conn, ioutil.WriteNopCloser(conn), conn.Close), nil
 }

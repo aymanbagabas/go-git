@@ -27,7 +27,7 @@ func TestFileTransport_Open(t *testing.T) {
 		Command: "git-upload-pack",
 	}
 
-	sess, err := tr.Open(context.Background(), req)
+	sess, err := tr.Connect(context.Background(), req)
 	require.NoError(t, err)
 	require.NotNil(t, sess)
 	require.NoError(t, sess.Close())
@@ -84,7 +84,7 @@ func TestFileTransport_RepoNotFound(t *testing.T) {
 		Command: "git-upload-pack",
 	}
 
-	_, err := tr.Open(context.Background(), req)
+	_, err := tr.Connect(context.Background(), req)
 	require.Error(t, err)
 }
 

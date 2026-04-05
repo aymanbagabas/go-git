@@ -5,7 +5,6 @@ package client
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/go-git/go-git/v6/x/transport"
 	"github.com/go-git/go-git/v6/x/transport/file"
@@ -43,19 +42,20 @@ func (c *Client) RegisterTransport(scheme string, tr transport.Transport) {
 	c.schemes[scheme] = tr
 }
 
-// Open resolves the transport for the request URL scheme and opens a Session.
-func (c *Client) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
+// Handshake resolves the transport for the request URL scheme and performs
+// a pack protocol handshake.
+func (c *Client) Handshake(ctx context.Context, req *transport.Request) (transport.Session, error) {
 	tr, err := c.resolve(req)
 	if err != nil {
 		return nil, err
 	}
-	return tr.Open(ctx, req)
+	return tr.Handshake(ctx, req)
 }
 
 // Connect resolves the transport for the request URL scheme and opens a
 // raw full-duplex stream. Returns ErrConnectUnsupported if the transport
 // does not implement Connectable (e.g. HTTP).
-func (c *Client) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
+func (c *Client) Connect(ctx context.Context, req *transport.Request) (transport.Conn, error) {
 	tr, err := c.resolve(req)
 	if err != nil {
 		return nil, err

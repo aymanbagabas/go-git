@@ -38,12 +38,12 @@ func NewTransport(opts Options) *Transport {
 	return &Transport{opts: opts}
 }
 
-func (t *Transport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
+func (t *Transport) Open(ctx context.Context, req *transport.Request) (transport.Conn, error) {
 	client := t.resolveClient()
 	authorizer := t.opts.Authorizer
 	gitProtocol := transport.GitProtocolEnv(req.Protocol)
 
-	return transport.NewHTTPSession(func(body io.Reader) (*http.Response, error) {
+	return transport.NewHTTPConn(func(body io.Reader) (*http.Response, error) {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.URL.String(), body)
 		if err != nil {
 			return nil, fmt.Errorf("http transport: %w", err)

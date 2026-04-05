@@ -84,6 +84,6 @@ func TestRegisterTransport(t *testing.T) {
 
 type mockTransport struct{}
 
-func (m *mockTransport) Open(_ context.Context, _ *transport.Request) (transport.Session, error) {
+func (m *mockTransport) Handshake(_ context.Context, _ *transport.Request) (transport.Session, error) {
 	return nil, nil
 }

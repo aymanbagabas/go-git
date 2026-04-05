@@ -24,7 +24,7 @@ type UploadPackSuite struct {
 	Storer              storage.Storer
 	EmptyStorer         storage.Storer
 	NonExistentStorer   storage.Storer
-	PackTransport       transport.PackTransport
+	Transport           transport.Transport
 }
 
 // TearDownTest closes all storers.
@@ -36,8 +36,8 @@ func (s *UploadPackSuite) TearDownTest() {
 	}
 }
 
-func (s *UploadPackSuite) packClient() transport.PackTransport {
-	return s.PackTransport
+func (s *UploadPackSuite) packClient() transport.Transport {
+	return s.Transport
 }
 
 // TestAdvertisedReferencesEmpty tests advertised references on an empty repo.

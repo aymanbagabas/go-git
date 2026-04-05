@@ -10,13 +10,13 @@ import (
 
 // PackTransport is implemented by transports that speak the Git pack
 // protocol. Each transport implements this directly — stream transports
-// use the NewStreamPackSession helper, HTTP handles smart/dumb internally.
-type PackTransport interface {
-	Handshake(ctx context.Context, req *Request) (PackSession, error)
+// use the NewStreamSession helper, HTTP handles smart/dumb internally.
+type Transport interface {
+	Handshake(ctx context.Context, req *Request) (Session, error)
 }
 
-// PackSession is returned by PackTransport.Handshake.
-type PackSession interface {
+// Session is returned by PackTransport.Handshake.
+type Session interface {
 	Capabilities() *capability.List
 	GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference, error)
 	Fetch(ctx context.Context, st storage.Storer, req *FetchRequest) error

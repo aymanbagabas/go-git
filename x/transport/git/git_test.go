@@ -85,7 +85,7 @@ func TestGitTransport_Open(t *testing.T) {
 		Protocol: protocol.V0,
 	}
 
-	sess, err := tr.Open(context.Background(), req)
+	sess, err := tr.Connect(context.Background(), req)
 	require.NoError(t, err)
 	require.NotNil(t, sess)
 
@@ -122,7 +122,7 @@ func TestGitTransport_Connect(t *testing.T) {
 	require.NotNil(t, rwc)
 
 	buf := make([]byte, 4)
-	n, err := rwc.Read(buf)
+	n, err := rwc.Reader().Read(buf)
 	require.NoError(t, err)
 	assert.Greater(t, n, 0, "should read pkt-line data from server")
 

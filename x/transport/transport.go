@@ -30,7 +30,7 @@ import (
 //
 // Adapters must not attempt to read from Reader() before closing Writer().
 // Violating this contract may deadlock on HTTP-backed sessions.
-type Session interface {
+type Conn interface {
 	io.Closer
 	Reader() io.Reader
 	Writer() io.WriteCloser
@@ -39,14 +39,6 @@ type Session interface {
 // Transport is the universal transport interface. All built-in transports
 // implement Transport.
 //
-// For transports that also implement Connectable, Open can be a thin
-// adapter that wraps the connected io.ReadWriteCloser into a Session.
-//
-// For HTTP, Open is the primary interface. It performs the one-shot
-// stateless exchange and returns an HTTP-backed Session.
-type Transport interface {
-	Open(context.Context, *Request) (Session, error)
-}
 
 // Connectable is an optional lower-level capability implemented only by
 // transports that can truly open a raw full-duplex stream.
@@ -55,5 +47,5 @@ type Transport interface {
 // custom helper transports. It is explicitly not implemented by HTTP
 // transports.
 type Connectable interface {
-	Connect(context.Context, *Request) (io.ReadWriteCloser, error)
+	Connect(context.Context, *Request) (Conn, error)
 }

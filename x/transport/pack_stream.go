@@ -13,11 +13,11 @@ import (
 	"github.com/go-git/go-git/v6/storage"
 )
 
-// StreamPackSession implements PackSession over a full-duplex stream.
-// Stream transports (SSH, Git TCP, file) call NewStreamPackSession from
+// StreamSession implements PackSession over a full-duplex stream.
+// Stream transports (SSH, Git TCP, file) call NewStreamSession from
 // their Handshake implementation.
-type StreamPackSession struct {
-	sess    Session
+type StreamSession struct {
+	conn    Conn
 	r       *bufio.Reader
 	w       io.WriteCloser
 	svc     string
@@ -26,33 +26,33 @@ type StreamPackSession struct {
 	refs    *packp.AdvRefs
 }
 
-// NewStreamPackSession reads version + adv-refs from the session and
-// returns a ready StreamPackSession.
-func NewStreamPackSession(sess Session, service string) (*StreamPackSession, error) {
-	r := bufio.NewReader(sess.Reader())
-	w := sess.Writer()
+// NewStreamSession reads version + adv-refs from the session and
+// returns a ready StreamSession.
+func NewStreamSession(conn Conn, service string) (*StreamSession, error) {
+	r := bufio.NewReader(conn.Reader())
+	w := conn.Writer()
 
 	ver, err := DiscoverVersion(r)
 	if err != nil {
-		_ = sess.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
 	switch ver {
 	case protocol.V2:
-		_ = sess.Close()
+		_ = conn.Close()
 		return nil, ErrUnsupportedVersion
 	case protocol.V1, protocol.V0:
 	}
 
 	ar := packp.NewAdvRefs()
 	if err := ar.Decode(r); err != nil && !errors.Is(err, packp.ErrEmptyAdvRefs) {
-		_ = sess.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
-	return &StreamPackSession{
-		sess:    sess,
+	return &StreamSession{
+		conn:    conn,
 		r:       r,
 		w:       w,
 		svc:     service,
@@ -63,10 +63,10 @@ func NewStreamPackSession(sess Session, service string) (*StreamPackSession, err
 }
 
 // Capabilities implements PackSession.
-func (s *StreamPackSession) Capabilities() *capability.List { return s.caps }
+func (s *StreamSession) Capabilities() *capability.List { return s.caps }
 
 // GetRemoteRefs implements PackSession.
-func (s *StreamPackSession) GetRemoteRefs(_ context.Context) ([]*plumbing.Reference, error) {
+func (s *StreamSession) GetRemoteRefs(_ context.Context) ([]*plumbing.Reference, error) {
 	if s.refs == nil {
 		return nil, ErrEmptyRemoteRepository
 	}
@@ -78,7 +78,7 @@ func (s *StreamPackSession) GetRemoteRefs(_ context.Context) ([]*plumbing.Refere
 }
 
 // Fetch implements PackSession.
-func (s *StreamPackSession) Fetch(ctx context.Context, st storage.Storer, req *FetchRequest) error {
+func (s *StreamSession) Fetch(ctx context.Context, st storage.Storer, req *FetchRequest) error {
 	shallows, err := NegotiatePack(ctx, st, s.caps, false, s.r, s.w, req)
 	if err != nil {
 		return err
@@ -87,11 +87,11 @@ func (s *StreamPackSession) Fetch(ctx context.Context, st storage.Storer, req *F
 }
 
 // Push implements PackSession.
-func (s *StreamPackSession) Push(ctx context.Context, _ storage.Storer, req *PushRequest) error {
+func (s *StreamSession) Push(ctx context.Context, _ storage.Storer, req *PushRequest) error {
 	return SendPack(ctx, s.caps, s.w, io.NopCloser(s.r), req)
 }
 
 // Close implements PackSession.
-func (s *StreamPackSession) Close() error { return s.sess.Close() }
+func (s *StreamSession) Close() error { return s.conn.Close() }
 
-var _ PackSession = (*StreamPackSession)(nil)
+var _ Session = (*StreamSession)(nil)

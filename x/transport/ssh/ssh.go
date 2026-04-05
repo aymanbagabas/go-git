@@ -56,16 +56,12 @@ func NewTransport(opts Options) *Transport {
 	return &Transport{opts: opts}
 }
 
-func (t *Transport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
+func (t *Transport) Connect(ctx context.Context, req *transport.Request) (transport.Conn, error) {
 	conn, err := t.connect(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewStreamSession(conn.stdout, conn.stdin, conn.Close), nil
-}
-
-func (t *Transport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
-	return t.connect(ctx, req)
+	return transport.NewConn(conn.stdout, conn.stdin, conn.Close), nil
 }
 
 func (t *Transport) connect(ctx context.Context, req *transport.Request) (*sshConn, error) {
