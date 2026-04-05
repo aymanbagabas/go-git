@@ -14,7 +14,6 @@ import (
 
 	"github.com/kevinburke/ssh_config"
 	gossh "golang.org/x/crypto/ssh"
-	"golang.org/x/net/proxy"
 
 	"github.com/go-git/go-git/v6/utils/ioutil"
 	transport "github.com/go-git/go-git/v6/x/transport"
@@ -61,7 +60,7 @@ type Options struct {
 	ClientConfig func(context.Context, *transport.Request) (*gossh.ClientConfig, error)
 
 	// DialContext is the function used to establish TCP connections.
-	// If nil, golang.org/x/net/proxy.Dial is used.
+	// If nil, a default net.Dialer is used.
 	DialContext transport.DialContextFunc
 
 	// DialProxy wraps DialContext to route connections through a proxy.
@@ -209,7 +208,7 @@ func (t *Transport) dial(ctx context.Context, network, addr string, config *goss
 	case t.opts.DialContext != nil:
 		conn, err = t.opts.DialContext(ctx, network, addr)
 	default:
-		conn, err = proxy.Dial(ctx, network, addr)
+		conn, err = (&net.Dialer{}).DialContext(ctx, network, addr)
 	}
 	if err != nil {
 		return nil, err
