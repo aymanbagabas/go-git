@@ -71,7 +71,7 @@ Notes:
 
 - `URL` is the target remote URL.
 - `Command` is a transport-neutral command name such as `git-upload-pack`, `git-receive-pack`, `git-upload-archive`, `git-lfs-authenticate`, or `git-lfs-transfer`.
-- `Args` carries command-specific arguments after the command name.
+- `Args` carries additional arguments appended after the command and repository path on the wire.
 - `Protocol` communicates Git protocol version preference where relevant.
 - The repository path is **not** a field on `Request`. Transport implementations derive it from `URL.Path`, matching how canonical Git handles the relationship for all transport protocols.
 
