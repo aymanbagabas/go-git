@@ -95,11 +95,11 @@ func NewPublicKeys(user string, pemBytes []byte, password string) (*PublicKeys, 
 // encoded private key. An encryption password should be given if the file
 // contains a password encrypted PEM block otherwise password should be empty.
 func NewPublicKeysFromFile(user, pemFile, password string) (*PublicKeys, error) {
-	bytes, err := os.ReadFile(pemFile)
+	pemData, err := os.ReadFile(pemFile)
 	if err != nil {
 		return nil, err
 	}
-	return NewPublicKeys(user, bytes, password)
+	return NewPublicKeys(user, pemData, password)
 }
 
 // ClientConfig returns the ssh.ClientConfig for public key authentication.
@@ -132,7 +132,7 @@ func NewSSHAgentAuth(u string) (*PublicKeysCallback, error) {
 
 	a, _, err := sshagent.New()
 	if err != nil {
-		return nil, fmt.Errorf("error creating SSH agent: %q", err)
+		return nil, fmt.Errorf("error creating SSH agent: %w", err)
 	}
 
 	return &PublicKeysCallback{
@@ -193,11 +193,11 @@ func newKnownHostsDb(files ...string) (*knownhosts.HostKeyDB, error) {
 		}
 	}
 
-	if files, err := filterKnownHostsFiles(files...); err != nil {
+	files, err := filterKnownHostsFiles(files...)
+	if err != nil {
 		return nil, err
-	} else {
-		return knownhosts.NewDB(files...)
 	}
+	return knownhosts.NewDB(files...)
 }
 
 func getDefaultKnownHostsFiles() ([]string, error) {
@@ -212,7 +212,7 @@ func getDefaultKnownHostsFiles() ([]string, error) {
 	}
 
 	return []string{
-		filepath.Join(homeDirPath, "/.ssh/known_hosts"),
+		filepath.Join(homeDirPath, ".ssh", "known_hosts"),
 		"/etc/ssh/ssh_known_hosts",
 	}, nil
 }
@@ -226,7 +226,7 @@ func filterKnownHostsFiles(files ...string) ([]string, error) {
 			continue
 		}
 
-		if !os.IsNotExist(err) {
+		if !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
 	}
