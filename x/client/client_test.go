@@ -224,6 +224,65 @@ func TestNilRequest(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestWithInsecureSkipTLS(t *testing.T) {
+	t.Parallel()
+
+	c := New(WithInsecureSkipTLS())
+	defer c.Close()
+
+	tr, err := c.Transport("https")
+	require.NoError(t, err)
+	assert.NotNil(t, tr)
+}
+
+func TestWithCABundle(t *testing.T) {
+	t.Parallel()
+
+	c := New(WithCABundle(testCAPEM))
+	defer c.Close()
+
+	tr, err := c.Transport("https")
+	require.NoError(t, err)
+	assert.NotNil(t, tr)
+}
+
+func TestWithInsecureSkipTLS_And_WithCABundle_Merge(t *testing.T) {
+	t.Parallel()
+
+	var o options
+	WithInsecureSkipTLS()(&o)
+	WithCABundle(testCAPEM)(&o)
+
+	require.NotNil(t, o.http.TLS)
+	assert.True(t, o.http.TLS.InsecureSkipVerify)
+	assert.NotNil(t, o.http.TLS.RootCAs)
+}
+
+func TestWithInsecureSkipTLS_And_WithCABundle_ReverseOrder(t *testing.T) {
+	t.Parallel()
+
+	var o options
+	WithCABundle(testCAPEM)(&o)
+	WithInsecureSkipTLS()(&o)
+
+	require.NotNil(t, o.http.TLS)
+	assert.True(t, o.http.TLS.InsecureSkipVerify)
+	assert.NotNil(t, o.http.TLS.RootCAs)
+}
+
+// Self-signed CA certificate for testing.
+var testCAPEM = []byte(`-----BEGIN CERTIFICATE-----
+MIIBkTCB+wIJALRiMLAh4HMHMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
+c3RjYTAeFw0yNDA0MDQwMDAwMDBaFw0zNDA0MDIwMDAwMDBaMBExDzANBgNVBAMM
+BnRlc3RjYTBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQC7o96+IG5sKBe0QKbsBigc
+GsR8cKQuDfhCFqzWn7zr4aqHsLQiKEJsClMDGnNHEFGDFpXuIFxnGOTPYFOYIuDH
+AgMBAAGjUzBRMB0GA1UdDgQWBBQgTxe0MCRKYB0ILQM0L7V/lMjxNjAfBgNVHSME
+GDAWgBQgTxe0MCRKYB0ILQM0L7V/lMjxNjAPBgNVHRMBAf8EBTADAQH/MA0GCSqG
+SIb3DQEBCwUAA0EAh/8fnFa6VW1cB8QJWIM4KpCmpY9R1YMaqGCbDjM0FZmE+dqA
+NsaKMCSE1YOIMBN6mBUX3iTmy/sCTIYMBbFPgQ==
+-----END CERTIFICATE-----
+`)
+
 type mockTransport struct{}
 
 func (m *mockTransport) Handshake(_ context.Context, _ *transport.Request) (transport.Session, error) {

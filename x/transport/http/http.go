@@ -2,24 +2,30 @@
 package http
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/url"
 )
 
 // Options configures the HTTP transport.
 type Options struct {
-	// Client is the underlying HTTP client. If nil, a default client is used.
-	// TLS configuration (InsecureSkipVerify, custom CA bundles) should be
-	// configured on the Client's Transport.
+	// Client is the underlying HTTP client. If nil, a default client is
+	// created. When Client is set, TLS and HTTPProxy are ignored —
+	// configure them on the provided Client directly.
 	Client *http.Client
 
 	// Authorizer mutates outgoing HTTP requests to add authentication.
 	Authorizer func(*http.Request) error
 
 	// HTTPProxy returns the proxy URL for a given HTTP request.
-	// If nil, http.ProxyFromEnvironment is used when no custom Client
-	// is provided.
+	// If nil, the default http.Transport proxy behavior is used.
+	// Ignored when Client is set.
 	HTTPProxy func(*http.Request) (*url.URL, error)
+
+	// TLS configures TLS for HTTPS connections. Set InsecureSkipVerify
+	// to skip certificate verification, or set RootCAs for a custom CA
+	// bundle. Ignored when Client is set.
+	TLS *tls.Config
 }
 
 // Transport implements the http:// and https:// transport protocol.
@@ -41,6 +47,10 @@ func (t *Transport) resolveClient() *http.Client {
 
 	if t.opts.HTTPProxy != nil {
 		tr.Proxy = t.opts.HTTPProxy
+	}
+
+	if t.opts.TLS != nil {
+		tr.TLSClientConfig = t.opts.TLS
 	}
 
 	return &http.Client{Transport: tr}

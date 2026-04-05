@@ -4,6 +4,8 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
@@ -41,6 +43,13 @@ type options struct {
 	file file.Options
 
 	schemes map[string]transport.Transport
+}
+
+func (o *options) ensureTLS() *tls.Config {
+	if o.http.TLS == nil {
+		o.http.TLS = &tls.Config{}
+	}
+	return o.http.TLS
 }
 
 // WithSSHAuth sets SSH authentication. The auth type's ClientConfig method
@@ -99,10 +108,31 @@ func WithDialer(fn transport.DialContextFunc) Option {
 }
 
 // WithHTTPClient sets the HTTP client used by the HTTP transport.
-// TLS configuration should be set on the client's Transport.
+// When a custom client is set, WithInsecureSkipTLS, WithCABundle, and
+// WithProxyURL/WithProxyEnvironment do not affect HTTP connections —
+// configure them on the provided client directly.
 func WithHTTPClient(c *http.Client) Option {
 	return func(o *options) {
 		o.http.Client = c
+	}
+}
+
+// WithInsecureSkipTLS disables TLS certificate verification for HTTPS.
+// Can be combined with WithCABundle.
+func WithInsecureSkipTLS() Option {
+	return func(o *options) {
+		o.ensureTLS().InsecureSkipVerify = true
+	}
+}
+
+// WithCABundle sets a PEM-encoded CA certificate bundle for HTTPS
+// connections. When set, only these CAs are trusted.
+// Can be combined with WithInsecureSkipTLS.
+func WithCABundle(pem []byte) Option {
+	return func(o *options) {
+		pool := x509.NewCertPool()
+		pool.AppendCertsFromPEM(pem)
+		o.ensureTLS().RootCAs = pool
 	}
 }
 

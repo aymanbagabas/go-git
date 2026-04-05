@@ -10,7 +10,9 @@ import (
 //
 // URL is the target remote. Command is the transport-neutral command name
 // (e.g. "git-upload-pack", "git-receive-pack", "git-lfs-authenticate").
-// Args carries command-specific arguments after the command name.
+// Args carries additional arguments appended after the command and
+// repository path. For example, git-lfs-authenticate produces
+// `git-lfs-authenticate '<repo>' '<arg>'` on the wire.
 // Protocol communicates the preferred Git wire protocol version.
 //
 // The repository path is not a field on Request. Adapters derive it from
