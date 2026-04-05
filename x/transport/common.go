@@ -36,12 +36,16 @@ type FetchRequest struct {
 	// Progress is the progress sideband.
 	Progress sideband.Progress
 
-	// Wants is the list of references to fetch.
-	// TODO: Build this slice in the transport package.
+	// Wants is the list of object hashes the client wants to fetch.
+	// The caller selects which remote refs to fetch (refspec matching)
+	// and extracts their hashes.
 	Wants []plumbing.Hash
 
-	// Haves is the list of references the client already has.
-	// TODO: Build this slice in the transport package.
+	// Haves is the list of object hashes the client already has.
+	// TODO: The transport should compute haves internally from the
+	// storer during pack negotiation, matching how canonical git's
+	// fetch-pack walks the local object graph to determine common
+	// ancestors. Once implemented, remove this field.
 	Haves []plumbing.Hash
 
 	// Depth is the depth of the fetch.
@@ -60,8 +64,11 @@ type PushRequest struct {
 	// Packfile is the packfile reader.
 	Packfile io.ReadCloser
 
-	// Commands is the list of push commands to be sent to the server.
-	// TODO: build the Commands slice in the transport package.
+	// Commands is the list of ref update commands to send to the server.
+	// The caller builds these from refspec matching against local and
+	// remote refs, including force-push validation and fast-forward
+	// checks. This matches canonical git's send-pack, which also
+	// receives pre-built commands from the caller.
 	Commands []*packp.Command
 
 	// Progress is the progress sideband.
