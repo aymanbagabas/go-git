@@ -60,7 +60,7 @@ func (s *UploadPackServeSuite) TestUploadPackAlwaysUseSidebandWhenAvailable() {
 	var reqW bytes.Buffer
 	require.NoError(s.T(), upreq.Encode(&reqW))
 	require.NoError(s.T(), uphav.Encode(&reqW))
-	buf := testServe(s.T(), st, UploadPack, io.NopCloser(&reqW), &UploadPackOptions{
+	buf := testServe(s.T(), st, UploadPack, io.NopCloser(&reqW), &UploadPackRequest{
 		GitProtocol:   "version=1",
 		AdvertiseRefs: false,
 		StatelessRPC:  true,
@@ -90,7 +90,7 @@ func (s *UploadPackServeSuite) TestUploadPackSkipDeltaCompression() {
 		var reqW bytes.Buffer
 		require.NoError(s.T(), upreq.Encode(&reqW))
 		require.NoError(s.T(), uphav.Encode(&reqW))
-		buf := testServe(s.T(), st, UploadPack, io.NopCloser(&reqW), &UploadPackOptions{
+		buf := testServe(s.T(), st, UploadPack, io.NopCloser(&reqW), &UploadPackRequest{
 			GitProtocol:          "version=1",
 			AdvertiseRefs:        false,
 			StatelessRPC:         true,

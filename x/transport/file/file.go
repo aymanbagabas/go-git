@@ -14,14 +14,14 @@ import (
 type ServerFunc func(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, gitProtocol string) error
 
 func defaultUploadPack(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, gitProtocol string) error {
-	return transport.UploadPack(ctx, st, r, w, &transport.UploadPackOptions{
+	return transport.UploadPack(ctx, st, r, w, &transport.UploadPackRequest{
 		GitProtocol:          gitProtocol,
 		SkipDeltaCompression: true,
 	})
 }
 
 func defaultReceivePack(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, gitProtocol string) error {
-	return transport.ReceivePack(ctx, st, r, w, &transport.ReceivePackOptions{
+	return transport.ReceivePack(ctx, st, r, w, &transport.ReceivePackRequest{
 		GitProtocol: gitProtocol,
 	})
 }
