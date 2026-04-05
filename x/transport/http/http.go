@@ -26,6 +26,12 @@ type Options struct {
 	// to skip certificate verification, or set RootCAs for a custom CA
 	// bundle. Ignored when Client is set.
 	TLS *tls.Config
+
+	// ForceDumb forces the transport to use the dumb HTTP protocol,
+	// bypassing smart HTTP detection. When true, the transport will
+	// not send the ?service= query parameter in the info/refs request
+	// and will always treat the server as a dumb HTTP server.
+	ForceDumb bool
 }
 
 // Transport implements the http:// and https:// transport protocol.

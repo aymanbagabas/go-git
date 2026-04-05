@@ -24,12 +24,15 @@ import (
 func (t *Transport) Handshake(ctx context.Context, req *transport.Request) (transport.Session, error) {
 	service := req.Command
 	baseURL := req.URL
+	forceDumb := t.opts.ForceDumb
 
 	infoURL, err := url.JoinPath(baseURL.String(), "info/refs")
 	if err != nil {
 		return nil, err
 	}
-	infoURL += "?service=" + service
+	if !forceDumb {
+		infoURL += "?service=" + service
+	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, infoURL, nil)
 	if err != nil {
@@ -37,8 +40,10 @@ func (t *Transport) Handshake(ctx context.Context, req *transport.Request) (tran
 	}
 
 	httpReq.Header.Set("User-Agent", capability.DefaultAgent())
-	if gp := transport.GitProtocolEnv(req.Protocol); gp != "" {
-		httpReq.Header.Set("Git-Protocol", gp)
+	if !forceDumb {
+		if gp := transport.GitProtocolEnv(req.Protocol); gp != "" {
+			httpReq.Header.Set("Git-Protocol", gp)
+		}
 	}
 	if baseURL.User != nil {
 		password, _ := baseURL.User.Password()
@@ -63,6 +68,10 @@ func (t *Transport) Handshake(ctx context.Context, req *transport.Request) (tran
 
 	// Update base URL if the server redirected.
 	baseURL = applyRedirect(resp, baseURL)
+
+	if forceDumb {
+		return handshakeDumb(resp, req, client, t.opts.Authorizer)
+	}
 
 	expected := fmt.Sprintf("application/x-%s-advertisement", service)
 	isSmart := resp.Header.Get("Content-Type") == expected
