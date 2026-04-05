@@ -146,6 +146,33 @@ type Session interface {
 }
 ```
 
+### Server-side functions
+
+The transport package includes server-side implementations that run the Git protocol from the server's perspective:
+
+```go
+func UploadPack(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, req *UploadPackRequest) error
+func ReceivePack(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, req *ReceivePackRequest) error
+```
+
+These are used by the file transport internally but are also available for building custom Git servers.
+
+### HTTP transport options
+
+The HTTP transport supports both smart and dumb protocols:
+
+```go
+type Options struct {
+    Client     *http.Client
+    Authorizer func(*http.Request) error
+    HTTPProxy  func(*http.Request) (*url.URL, error)
+    TLS        *tls.Config
+    ForceDumb  bool // forces dumb HTTP protocol, bypassing smart detection
+}
+```
+
+When `ForceDumb` is true, the transport skips the `?service=` query parameter in the `/info/refs` request and always treats the server as a dumb HTTP server. This provides backwards compatibility with `plumbing/transport/http.TransportOptions.UseDumb`.
+
 ### Client
 
 ```go
@@ -162,6 +189,21 @@ session, _ := c.Handshake(ctx, &transport.Request{
 ```
 
 The client is configured once with functional options and reused across operations. Auth, proxy, dialer, and transport overrides are all set at construction time. No mutable state after `New`.
+
+Available options:
+
+| Option | Purpose |
+|--------|---------|
+| `WithSSHAuth(SSHAuth)` | SSH authentication (keys, password, agent) |
+| `WithHTTPAuth(HTTPAuth)` | HTTP authentication (basic, token) |
+| `WithProxyURL(*url.URL)` | Explicit proxy for both HTTP and stream transports |
+| `WithProxyEnvironment()` | Read proxy from `HTTP_PROXY`/`ALL_PROXY` environment |
+| `WithDialer(DialContextFunc)` | Custom TCP dialer |
+| `WithHTTPClient(*http.Client)` | Custom HTTP client |
+| `WithInsecureSkipTLS()` | Skip TLS certificate verification |
+| `WithCABundle([]byte)` | Custom CA certificate bundle |
+| `WithLoader(Loader)` | Custom repository loader for file transport |
+| `WithTransport(scheme, Transport)` | Register custom transport for a URL scheme |
 
 ### Authentication
 
@@ -258,29 +300,64 @@ c := client.New(
 
 ## What the new API makes possible
 
-### git-upload-archive
+### Raw connections
 
-`git-upload-archive` opens an SSH channel and speaks its own protocol — it does not do a ref advertisement handshake. The current API has no way to open a raw stream.
+The `Connectable` interface enables protocols beyond pack operations. Any command can be run over SSH, Git TCP, or file transports:
+
+```go
+conn, err := c.Connect(ctx, &transport.Request{
+    URL:     remoteURL,
+    Command: "my-custom-tool",
+    Args:    []string{"--flag", "value"},
+})
+```
+
+This is not possible with the current API because `Session.Handshake` always expects a pack protocol service. `Commander.Command` exists internally but is not exposed through the public transport interface.
+
+### git-upload-archive (proposed)
+
+The architecture supports `git-upload-archive` through both raw connections and a higher-level API. The following types and functions are proposed but not yet finalized:
+
+```go
+// Archivable is an optional Session capability for git-upload-archive.
+type Archivable interface {
+    Archive(ctx context.Context, req *ArchiveRequest) (io.ReadCloser, error)
+}
+
+// ArchiveRequest describes a git-upload-archive request.
+type ArchiveRequest struct {
+    Args     []string          // git-archive arguments
+    Progress sideband.Progress // optional progress output
+}
+
+// UploadArchive runs the server-side upload-archive service.
+func UploadArchive(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, req *UploadArchiveRequest) error
+
+// UploadArchiveRequest configures the server-side upload-archive service.
+type UploadArchiveRequest struct {
+    // AllowUnreachable disables the default security restriction that only
+    // allows direct ref names. The repository-level config
+    // uploadArchive.allowUnreachable overrides this value when set.
+    AllowUnreachable bool
+}
+```
+
+Stream transports (SSH, Git TCP, file) can implement `Archivable` through the existing `Conn` abstraction. HTTP transports would speak the same wire protocol by POSTing to `/git-upload-archive`. The server-side `UploadArchive` function supports tar, tar.gz, tgz, and zip formats with path filtering and prefix support.
+
+Low-level raw connection usage is also possible:
 
 ```go
 conn, err := c.Connect(ctx, &transport.Request{
     URL:     remoteURL,
     Command: transport.UploadArchiveService,
 })
-if err != nil {
-    return err
-}
 defer conn.Close()
 
-w := conn.Writer()
-fmt.Fprintf(w, "argument --format=tar.gz\n")
-fmt.Fprintf(w, "argument HEAD\n")
-w.Close()
-
-io.Copy(outputFile, conn.Reader())
+rc, err := transport.Archive(ctx, conn.Writer(), conn.Reader(), &transport.ArchiveRequest{
+    Args: []string{"--format=tar.gz", "HEAD"},
+})
+io.Copy(outputFile, rc)
 ```
-
-This is not possible with the current API because `Session.Handshake` always expects a pack protocol service.
 
 ### Git protocol v2
 
@@ -339,20 +416,6 @@ fmt.Fprintf(w, "version 1\n")
 // ... read/write LFS transfer packets over conn
 ```
 
-### Custom commands
-
-Any command can be run over SSH, Git TCP, or file transports:
-
-```go
-conn, err := c.Connect(ctx, &transport.Request{
-    URL:     remoteURL,
-    Command: "my-custom-tool",
-    Args:    []string{"--flag", "value"},
-})
-```
-
-None of these are possible with the current API. `Commander.Command` exists internally but is not exposed through the public transport interface — it is hidden behind the pack-specific `Session.Handshake`.
-
 ## Comparison tables
 
 ### Separation of concerns
@@ -367,6 +430,7 @@ None of these are possible with the current API. `Commander.Command` exists inte
 | Storage | Bound at `NewSession` | Passed to `Fetch`/`Push` |
 | Pack protocol | Baked into `Transport` | `Session` layer above `Conn` |
 | Raw streams | Not possible | `Connectable.Connect` |
+| Dumb HTTP | `TransportOptions.UseDumb` | `Options.ForceDumb` |
 
 ### Standard library alignment
 
@@ -427,14 +491,24 @@ Since `plumbing/transport` has never been released as stable, it can be removed 
 
 ## Implementation status
 
-All code is implemented and tested:
+All core code is implemented and tested:
 
 | Package | Tests | Status |
 |---------|-------|--------|
-| `x/transport` | Core types, pack negotiation, fetch/push | Passing |
-| `x/transport/ssh` | 15 upload-pack + 14 receive-pack + 9 auth | Passing |
-| `x/transport/http` | 15 upload-pack + 14 receive-pack + 4 auth | Passing |
-| `x/transport/git` | Full suite | Passing |
-| `x/transport/file` | Full suite | Passing |
-| `x/client` | 15 unit tests (options, schemes, composition) | Passing |
+| `x/transport` | 31 tests (pack negotiation, fetch/push, version, loader, server info, update requests) | Passing |
+| `x/transport/ssh` | 24 tests (2 suite runners × 19+24 suite methods, 19 auth, 3 transport) | Passing |
+| `x/transport/http` | 20 tests (2 suite runners × 19+24 suite methods, 1 dumb suite × 6 active methods, 4 auth, 6 TLS, 7 common) | Passing |
+| `x/transport/git` | 5 tests (2 suite runners, 3 transport) | Passing |
+| `x/transport/file` | 11 tests (2 suite runners, 5 transport, 4 integration) | Passing |
+| `x/client` | 19 tests (options, schemes, composition) | Passing |
 
+### Test gaps to port from plumbing/transport
+
+The following test areas from `plumbing/transport` have not yet been ported to `x/transport`. Some are structurally replaced (e.g. `Endpoint` and `Registry` tests have no equivalent because those concepts don't exist), but others represent real coverage gaps:
+
+| Area | Missing tests | Notes |
+|------|--------------|-------|
+| **HTTP proxy** | `TestAdvertisedReferencesHTTP`, `TestAdvertisedReferencesHTTPS` | Full proxy integration test with MITM test proxy — needs porting |
+| **HTTP redirect** | `TestAdvertisedReferencesRedirectPath`, `TestAdvertisedReferencesRedirectSchema` | Redirect handling is implemented but not tested |
+| **SSH proxy** | `TestCommand` (SOCKS5 proxy test) | SOCKS5 proxy integration test — needs porting |
+| **SSH config** | `TestOverrideConfig`, `TestOverrideConfigKeep`, `TestDefaultSSHConfig*`, `TestInvalidSocks5Proxy` | SSH config override behavior — partially covered by new auth tests |
