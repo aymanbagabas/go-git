@@ -56,18 +56,13 @@ func (t *Transport) Handshake(ctx context.Context, req *transport.Request) (tran
 		return nil, fmt.Errorf("http transport: %w", err)
 	}
 
-	if resp.StatusCode == http.StatusNotFound {
+	if err := checkError(resp); err != nil {
 		_ = resp.Body.Close()
-		return nil, transport.ErrRepositoryNotFound
+		return nil, err
 	}
-	if resp.StatusCode == http.StatusUnauthorized {
-		_ = resp.Body.Close()
-		return nil, transport.ErrAuthenticationRequired
-	}
-	if resp.StatusCode != http.StatusOK {
-		_ = resp.Body.Close()
-		return nil, fmt.Errorf("http transport: unexpected status %d", resp.StatusCode)
-	}
+
+	// Update base URL if the server redirected.
+	baseURL = applyRedirect(resp, baseURL)
 
 	expected := fmt.Sprintf("application/x-%s-advertisement", service)
 	isSmart := resp.Header.Get("Content-Type") == expected

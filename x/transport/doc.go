@@ -1,11 +1,13 @@
 // Package transport implements the redesigned transport API for go-git.
 //
-// The new API separates transport capabilities from Git protocol adapters.
-// It introduces a universal Transport.Open entrypoint, an optional
-// Connectable capability for full-duplex transports, and an immutable
-// Client with built-in transport factory registration.
+// The API separates transport capabilities from Git protocol adapters:
 //
-// Git pack protocol operations (fetch, push, archive) and Git LFS operations
-// are implemented as adapters on top of these transport primitives rather
-// than being encoded directly into the transport interface.
+//   - Conn: a transport connection with independent read, write, and close
+//   - Connectable: transports that can open raw full-duplex connections
+//   - Transport: transports that speak the Git pack protocol (Handshake)
+//   - Session: a connected Git protocol session (refs, fetch, push)
+//
+// Stream transports (SSH, Git TCP, file) implement both Connectable and
+// Transport. HTTP implements only Transport, handling the smart and dumb
+// HTTP protocols internally.
 package transport

@@ -2,14 +2,8 @@
 package http
 
 import (
-	"context"
-	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-
-	"github.com/go-git/go-git/v6/plumbing/protocol/packp/capability"
-	transport "github.com/go-git/go-git/v6/x/transport"
 )
 
 // Options configures the HTTP transport.
@@ -36,43 +30,6 @@ type Transport struct {
 // NewTransport creates an HTTP transport with the given options.
 func NewTransport(opts Options) *Transport {
 	return &Transport{opts: opts}
-}
-
-func (t *Transport) Open(ctx context.Context, req *transport.Request) (transport.Conn, error) {
-	client := t.resolveClient()
-	authorizer := t.opts.Authorizer
-	gitProtocol := transport.GitProtocolEnv(req.Protocol)
-
-	return transport.NewHTTPConn(func(body io.Reader) (*http.Response, error) {
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.URL.String(), body)
-		if err != nil {
-			return nil, fmt.Errorf("http transport: %w", err)
-		}
-
-		httpReq.Header.Set("User-Agent", capability.DefaultAgent())
-
-		if gitProtocol != "" {
-			httpReq.Header.Set("Git-Protocol", gitProtocol)
-		}
-
-		if req.URL.User != nil {
-			password, _ := req.URL.User.Password()
-			httpReq.SetBasicAuth(req.URL.User.Username(), password)
-		}
-
-		if authorizer != nil {
-			if err := authorizer(httpReq); err != nil {
-				return nil, fmt.Errorf("http transport: authorize: %w", err)
-			}
-		}
-
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			return nil, fmt.Errorf("http transport: %w", err)
-		}
-
-		return resp, nil
-	}), nil
 }
 
 func (t *Transport) resolveClient() *http.Client {

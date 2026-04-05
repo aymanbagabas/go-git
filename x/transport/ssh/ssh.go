@@ -18,10 +18,15 @@ import (
 
 	"github.com/go-git/go-git/v6/utils/ioutil"
 	transport "github.com/go-git/go-git/v6/x/transport"
+	"github.com/go-git/go-git/v6/x/transport/ssh/knownhosts"
+	"github.com/go-git/go-git/v6/x/transport/ssh/sshagent"
 )
 
 // DefaultPort is the default port for the SSH protocol.
 const DefaultPort = 22
+
+// DefaultUsername is the default username for SSH connections.
+const DefaultUsername = "git"
 
 // DefaultSSHConfig is the reader used to access parameters stored in the
 // system's ssh_config files. If nil all the ssh_config are ignored.
@@ -32,9 +37,28 @@ type Config interface {
 	Get(alias, key string) string
 }
 
+// DefaultAuthBuilder is the function used to create a default ClientConfig
+// when Options.ClientConfig is nil. It uses SSH agent authentication.
+var DefaultAuthBuilder = func(user string) (*gossh.ClientConfig, error) {
+	a, _, err := sshagent.New()
+	if err != nil {
+		return nil, err
+	}
+
+	if user == "" {
+		user = DefaultUsername
+	}
+
+	return &gossh.ClientConfig{
+		User: user,
+		Auth: []gossh.AuthMethod{gossh.PublicKeysCallback(a.Signers)},
+	}, nil
+}
+
 // Options configures the SSH transport.
 type Options struct {
 	// ClientConfig provides SSH client configuration for each request.
+	// If nil, DefaultAuthBuilder is used with the username from the URL.
 	ClientConfig func(context.Context, *transport.Request) (*gossh.ClientConfig, error)
 
 	// DialContext is the function used to establish TCP connections.
@@ -56,6 +80,7 @@ func NewTransport(opts Options) *Transport {
 	return &Transport{opts: opts}
 }
 
+// Connect implements transport.Connectable.
 func (t *Transport) Connect(ctx context.Context, req *transport.Request) (transport.Conn, error) {
 	conn, err := t.connect(ctx, req)
 	if err != nil {
@@ -71,6 +96,22 @@ func (t *Transport) connect(ctx context.Context, req *transport.Request) (*sshCo
 	}
 
 	hostWithPort := resolveHostWithPort(req)
+
+	// Set up host key verification from known_hosts if not provided.
+	if config.HostKeyCallback == nil {
+		db, err := newKnownHostsDb()
+		if err != nil {
+			return nil, err
+		}
+		config.HostKeyCallback = db.HostKeyCallback()
+		config.HostKeyAlgorithms = db.HostKeyAlgorithms(hostWithPort)
+	} else if len(config.HostKeyAlgorithms) == 0 {
+		db, err := newKnownHostsDb()
+		if err != nil {
+			return nil, err
+		}
+		config.HostKeyAlgorithms = db.HostKeyAlgorithms(hostWithPort)
+	}
 
 	client, err := t.dial(ctx, "tcp", hostWithPort, config)
 	if err != nil {
@@ -116,8 +157,7 @@ func (t *Transport) connect(ctx context.Context, req *transport.Request) (*sshCo
 		client:  client,
 	}
 
-	// Read stderr in background — surface as RemoteError on Close or
-	// when the caller encounters an error reading stdout.
+	// Read stderr in background.
 	go func() {
 		var buf bytes.Buffer
 		_, _ = ioutil.CopyBufferPool(&buf, stderrPipe)
@@ -138,10 +178,25 @@ func (t *Transport) resolveConfig(ctx context.Context, req *transport.Request) (
 	if t.opts.ClientConfig != nil {
 		return t.opts.ClientConfig(ctx, req)
 	}
-	return nil, fmt.Errorf("ssh: no ClientConfig provider configured")
+
+	// Default: use SSH agent auth with username from URL.
+	var username string
+	if req.URL.User != nil {
+		username = req.URL.User.Username()
+	}
+	return DefaultAuthBuilder(username)
 }
 
 func (t *Transport) dial(ctx context.Context, network, addr string, config *gossh.ClientConfig) (*gossh.Client, error) {
+	// Honor timeout from ssh.ClientConfig.
+	var cancel context.CancelFunc
+	if config.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, config.Timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	defer cancel()
+
 	var conn net.Conn
 	var err error
 
@@ -166,6 +221,10 @@ func (t *Transport) dial(ctx context.Context, network, addr string, config *goss
 		return nil, err
 	}
 	return gossh.NewClient(c, chans, reqs), nil
+}
+
+func newKnownHostsDb(files ...string) (*knownhosts.HostKeyDB, error) {
+	return knownhosts.NewDB(files...)
 }
 
 func resolveHostWithPort(req *transport.Request) string {
@@ -203,7 +262,6 @@ type sshConn struct {
 func (c *sshConn) Read(p []byte) (int, error) {
 	n, err := c.stdout.Read(p)
 	if err != nil {
-		// If stdout read fails, check stderr for a more useful error.
 		if stderrErr := c.stderr(); stderrErr != nil {
 			return n, stderrErr
 		}
@@ -222,14 +280,12 @@ func (c *sshConn) Close() error {
 	if errors.Is(err, net.ErrClosed) {
 		err = nil
 	}
-	// If there was stderr output, surface it as the error.
 	if stderrErr := c.stderr(); stderrErr != nil {
 		return stderrErr
 	}
 	return err
 }
 
-// stderr returns stderr content as a RemoteError if non-empty.
 func (c *sshConn) stderr() error {
 	buf := c.stderrBuf.Load()
 	if buf == nil {

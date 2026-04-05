@@ -64,7 +64,7 @@ func handlerSSH(s ssh.Session) {
 	var wg sync.WaitGroup
 	wg.Add(3)
 	go func() { defer wg.Done(); _, _ = io.Copy(s, stdout) }()
-	go func() { defer wg.Done(); _, _ = io.Copy(stdin, s) }()
+	go func() { defer wg.Done(); _, _ = io.Copy(stdin, s); _ = stdin.Close() }()
 	go func() { defer wg.Done(); _, _ = io.Copy(s.Stderr(), stderr) }()
 	wg.Wait()
 
@@ -169,5 +169,5 @@ func TestSSHTransport_NoConfig(t *testing.T) {
 
 	_, err := tr.Connect(context.Background(), req)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no ClientConfig provider")
+	require.Error(t, err) // No SSH agent available and no ClientConfig — should fail
 }
