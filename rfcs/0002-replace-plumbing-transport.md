@@ -496,19 +496,14 @@ All core code is implemented and tested:
 | Package | Tests | Status |
 |---------|-------|--------|
 | `x/transport` | 31 tests (pack negotiation, fetch/push, version, loader, server info, update requests) | Passing |
-| `x/transport/ssh` | 24 tests (2 suite runners × 19+24 suite methods, 19 auth, 3 transport) | Passing |
-| `x/transport/http` | 20 tests (2 suite runners × 19+24 suite methods, 1 dumb suite × 6 active methods, 4 auth, 6 TLS, 7 common) | Passing |
+| `x/transport/ssh` | 26 tests (2 suite runners × 19+24 suite methods, 19 auth, 3 transport, 2 SOCKS5 proxy) | Passing |
+| `x/transport/http` | 24 tests (2 suite runners × 19+24 suite methods, 1 dumb suite × 6 active methods, 4 auth, 6 TLS, 7 common, 2 proxy, 2 redirect) | Passing |
 | `x/transport/git` | 5 tests (2 suite runners, 3 transport) | Passing |
 | `x/transport/file` | 11 tests (2 suite runners, 5 transport, 4 integration) | Passing |
 | `x/client` | 19 tests (options, schemes, composition) | Passing |
 
-### Test gaps to port from plumbing/transport
+All test areas from `plumbing/transport` have been ported or are structurally replaced. The following `plumbing/transport` tests have no direct equivalent because the underlying concepts were redesigned:
 
-The following test areas from `plumbing/transport` have not yet been ported to `x/transport`. Some are structurally replaced (e.g. `Endpoint` and `Registry` tests have no equivalent because those concepts don't exist), but others represent real coverage gaps:
-
-| Area | Missing tests | Notes |
-|------|--------------|-------|
-| **HTTP proxy** | `TestAdvertisedReferencesHTTP`, `TestAdvertisedReferencesHTTPS` | Full proxy integration test with MITM test proxy — needs porting |
-| **HTTP redirect** | `TestAdvertisedReferencesRedirectPath`, `TestAdvertisedReferencesRedirectSchema` | Redirect handling is implemented but not tested |
-| **SSH proxy** | `TestCommand` (SOCKS5 proxy test) | SOCKS5 proxy integration test — needs porting |
-| **SSH config** | `TestOverrideConfig`, `TestOverrideConfigKeep`, `TestDefaultSSHConfig*`, `TestInvalidSocks5Proxy` | SSH config override behavior — partially covered by new auth tests |
+- **Endpoint/Registry tests** (`TestNewEndpoint`, `TestInstallProtocol`, etc.) — replaced by `*url.URL` and `client.WithTransport`; tested through `x/transport` loader tests and `x/client` option tests.
+- **`overrideConfig` tests** — the new API does not have an `overrideConfig` function; SSH config composition is done by the caller through `Options.ClientConfig`. SSH config resolution (`DefaultSSHConfig`) is tested via `TestSSHConfig_*` tests.
+- **Auth Name/String tests** — the new API has no shared `AuthMethod` interface; auth types are tested through their concrete method tests (`TestBasicAuth_Authorizer`, `TestPublicKeys_ClientConfig`, etc.).
