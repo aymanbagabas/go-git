@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/capability"
-	oldtransport "github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/storage"
 	transport "github.com/go-git/go-git/v6/x/transport"
 )
@@ -49,7 +48,7 @@ func (s *UploadPackSuite) TestAdvertisedReferencesEmpty() {
 	defer func() { s.Require().NoError(conn.Close()) }()
 
 	ar, err := conn.GetRemoteRefs(context.TODO())
-	s.Require().ErrorIs(err, oldtransport.ErrEmptyRemoteRepository)
+	s.Require().ErrorIs(err, transport.ErrEmptyRemoteRepository)
 	s.Require().Nil(ar)
 }
 
@@ -124,7 +123,7 @@ func (s *UploadPackSuite) TestUploadPack() {
 	defer func() { s.Require().NoError(conn.Close()) }()
 
 	beforeCount := s.countObjects(s.Storer)
-	req := &oldtransport.FetchRequest{}
+	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
 	err = conn.Fetch(context.Background(), s.Storer, req)
@@ -148,7 +147,7 @@ func (s *UploadPackSuite) TestUploadPackWithContext() {
 	s.Require().NoError(err)
 	s.Require().NotNil(info)
 
-	req := &oldtransport.FetchRequest{}
+	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
 	err = conn.Fetch(ctx, s.Storer, req)
@@ -168,7 +167,7 @@ func (s *UploadPackSuite) TestUploadPackWithContextOnRead() {
 	s.Require().NoError(err)
 	s.Require().NotNil(info)
 
-	req := &oldtransport.FetchRequest{}
+	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
 	cancel()
@@ -188,7 +187,7 @@ func (s *UploadPackSuite) TestUploadPackFull() {
 	s.Require().NotNil(info)
 
 	beforeCount := s.countObjects(s.Storer)
-	req := &oldtransport.FetchRequest{}
+	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
 	err = conn.Fetch(context.Background(), s.Storer, req)
@@ -205,7 +204,7 @@ func (s *UploadPackSuite) TestUploadPackInvalidReq() {
 	s.Require().NoError(err)
 	defer func() { s.Require().NoError(conn.Close()) }()
 
-	req := &oldtransport.FetchRequest{}
+	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
 	err = conn.Fetch(context.Background(), s.Storer, req)
@@ -219,17 +218,17 @@ func (s *UploadPackSuite) TestUploadPackNoChanges() {
 	s.Require().NoError(err)
 	defer func() { s.Require().NoError(conn.Close()) }()
 
-	req := &oldtransport.FetchRequest{}
+	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 	req.Haves = append(req.Haves, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 
 	err = conn.Fetch(context.Background(), s.Storer, req)
-	s.Require().ErrorIs(err, oldtransport.ErrNoChange)
+	s.Require().ErrorIs(err, transport.ErrNoChange)
 }
 
 // TestUploadPackMulti tests upload-pack with multiple wants.
 func (s *UploadPackSuite) TestUploadPackMulti() {
-	req := &oldtransport.FetchRequest{}
+	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 	req.Wants = append(req.Wants, plumbing.NewHash("e8d3ffab552895c19b9fcf7aa264d277cde33881"))
 	s.testUploadPackFetch(req, 31)
@@ -237,13 +236,13 @@ func (s *UploadPackSuite) TestUploadPackMulti() {
 
 // TestUploadPackPartial tests upload-pack with haves for a partial fetch.
 func (s *UploadPackSuite) TestUploadPackPartial() {
-	req := &oldtransport.FetchRequest{}
+	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("6ecf0ef2c2dffb796033e5a02219af86ec6584e5"))
 	req.Haves = append(req.Haves, plumbing.NewHash("918c48b83bd081e863dbe1b80f8998f058cd8294"))
 	s.testUploadPackFetch(req, 4)
 }
 
-func (s *UploadPackSuite) testUploadPackFetch(req *oldtransport.FetchRequest, expectedObjects int) {
+func (s *UploadPackSuite) testUploadPackFetch(req *transport.FetchRequest, expectedObjects int) {
 	pc := s.packClient()
 	conn, err := pc.Handshake(context.TODO(), s.Endpoint, transport.UploadPackService)
 	s.Require().NoError(err)
@@ -264,7 +263,7 @@ func (s *UploadPackSuite) TestFetchError() {
 	s.Require().NoError(err)
 	defer func() { s.Require().NoError(conn.Close()) }()
 
-	req := &oldtransport.FetchRequest{}
+	req := &transport.FetchRequest{}
 	req.Wants = append(req.Wants, plumbing.NewHash("1111111111111111111111111111111111111111"))
 
 	err = conn.Fetch(context.Background(), s.Storer, req)

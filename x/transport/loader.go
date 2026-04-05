@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"errors"
 	"net/url"
 	"path/filepath"
 
@@ -12,10 +11,6 @@ import (
 	"github.com/go-git/go-git/v6/storage"
 	"github.com/go-git/go-git/v6/storage/filesystem"
 )
-
-// ErrRepositoryNotFound is returned when a repository cannot be found at the
-// given URL.
-var ErrRepositoryNotFound = errors.New("repository not found")
 
 // Loader loads a storage.Storer from a URL.
 type Loader interface {

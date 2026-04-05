@@ -12,7 +12,6 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/format/pktline"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/capability"
-	oldtransport "github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/storage"
 	"github.com/go-git/go-git/v6/utils/ioutil"
 	xstorage "github.com/go-git/go-git/v6/x/storage"
@@ -26,7 +25,7 @@ func negotiatePack(
 	statelessRPC bool,
 	reader io.Reader,
 	writer io.WriteCloser,
-	req *oldtransport.FetchRequest,
+	req *FetchRequest,
 ) (shallowInfo *packp.ShallowUpdate, err error) {
 	reader = ioutil.NewContextReader(ctx, reader)
 	writer = ioutil.NewContextWriteCloser(ctx, writer)
@@ -108,7 +107,7 @@ func negotiatePack(
 				return nil, err
 			}
 		} else {
-			return nil, oldtransport.ErrFilterNotSupported
+			return nil, ErrFilterNotSupported
 		}
 	}
 
@@ -116,7 +115,7 @@ func negotiatePack(
 
 	if req.Depth > 0 {
 		if !caps.Supports(capability.Shallow) {
-			return nil, oldtransport.ErrShallowNotSupported
+			return nil, ErrShallowNotSupported
 		}
 		upreq.Depth = packp.DepthCommits(req.Depth)
 		upreq.Shallows, err = st.Shallow()
@@ -132,7 +131,7 @@ func negotiatePack(
 		if err := writer.Close(); err != nil && !errors.Is(err, io.EOF) {
 			return nil, fmt.Errorf("closing writer: %w", err)
 		}
-		return nil, oldtransport.ErrNoChange
+		return nil, ErrNoChange
 	}
 
 	common := map[plumbing.Hash]struct{}{}
@@ -160,7 +159,7 @@ func negotiatePack(
 			if err := writer.Close(); err != nil && !errors.Is(err, io.EOF) {
 				return nil, fmt.Errorf("closing writer: %w", err)
 			}
-			return nil, oldtransport.ErrNoChange
+			return nil, ErrNoChange
 		}
 
 		if firstRound || statelessRPC {
@@ -239,7 +238,7 @@ func isSubset(needle, haystack []plumbing.Hash) bool {
 func readShallows(
 	statelessRPC bool,
 	r io.Reader,
-	req *oldtransport.FetchRequest,
+	req *FetchRequest,
 	shallowInfo **packp.ShallowUpdate,
 	firstRound bool,
 ) error {

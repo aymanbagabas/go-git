@@ -8,7 +8,6 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/sideband"
-	oldtransport "github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/storage"
 	"github.com/go-git/go-git/v6/utils/ioutil"
 )
@@ -20,7 +19,7 @@ func fetchPack(
 	caps *capability.List,
 	packf io.ReadCloser,
 	shallowInfo *packp.ShallowUpdate,
-	req *oldtransport.FetchRequest,
+	req *FetchRequest,
 ) error {
 	packf = ioutil.NewContextReadCloser(ctx, packf)
 

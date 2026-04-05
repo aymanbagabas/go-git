@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 
-	oldtransport "github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/storage"
 	transport "github.com/go-git/go-git/v6/x/transport"
 )
@@ -17,7 +16,7 @@ type ServerFunc func(ctx context.Context, st storage.Storer, r io.ReadCloser, w 
 
 // defaultUploadPack wraps the old transport.UploadPack into a ServerFunc.
 func defaultUploadPack(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, gitProtocol string) error {
-	return oldtransport.UploadPack(ctx, st, r, w, &oldtransport.UploadPackOptions{
+	return transport.UploadPack(ctx, st, r, w, &transport.UploadPackOptions{
 		GitProtocol:          gitProtocol,
 		SkipDeltaCompression: true,
 	})
@@ -25,7 +24,7 @@ func defaultUploadPack(ctx context.Context, st storage.Storer, r io.ReadCloser, 
 
 // defaultReceivePack wraps the old transport.ReceivePack into a ServerFunc.
 func defaultReceivePack(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, gitProtocol string) error {
-	return oldtransport.ReceivePack(ctx, st, r, w, &oldtransport.ReceivePackOptions{
+	return transport.ReceivePack(ctx, st, r, w, &transport.ReceivePackOptions{
 		GitProtocol: gitProtocol,
 	})
 }

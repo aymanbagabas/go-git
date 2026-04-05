@@ -11,14 +11,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/protocol"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/capability"
-	oldtransport "github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/storage"
-)
-
-// Git pack service command names.
-const (
-	UploadPackService  = "git-upload-pack"
-	ReceivePackService = "git-receive-pack"
 )
 
 // PackClient creates pack protocol sessions on top of the transport Client.
@@ -50,7 +43,7 @@ func (c *PackClient) Handshake(ctx context.Context, u *url.URL, service string, 
 	r := bufio.NewReader(sess.Reader())
 	w := sess.Writer()
 
-	ver, err := oldtransport.DiscoverVersion(r)
+	ver, err := DiscoverVersion(r)
 	if err != nil {
 		_ = sess.Close()
 		return nil, err
@@ -59,7 +52,7 @@ func (c *PackClient) Handshake(ctx context.Context, u *url.URL, service string, 
 	switch ver {
 	case protocol.V2:
 		_ = sess.Close()
-		return nil, oldtransport.ErrUnsupportedVersion
+		return nil, ErrUnsupportedVersion
 	case protocol.V1, protocol.V0:
 	}
 
@@ -106,19 +99,19 @@ func (s *PackSession) Version() protocol.Version {
 // GetRemoteRefs returns the references advertised by the remote.
 func (s *PackSession) GetRemoteRefs(_ context.Context) ([]*plumbing.Reference, error) {
 	if s.refs == nil {
-		return nil, oldtransport.ErrEmptyRemoteRepository
+		return nil, ErrEmptyRemoteRepository
 	}
 
 	forPush := s.svc == ReceivePackService
 	if !forPush && s.refs.IsEmpty() {
-		return nil, oldtransport.ErrEmptyRemoteRepository
+		return nil, ErrEmptyRemoteRepository
 	}
 
 	return s.refs.MakeReferenceSlice()
 }
 
 // Fetch sends a fetch-pack request to the server.
-func (s *PackSession) Fetch(ctx context.Context, st storage.Storer, req *oldtransport.FetchRequest) error {
+func (s *PackSession) Fetch(ctx context.Context, st storage.Storer, req *FetchRequest) error {
 	shallows, err := negotiatePack(ctx, st, s.caps, false, s.r, s.w, req)
 	if err != nil {
 		return err
@@ -128,7 +121,7 @@ func (s *PackSession) Fetch(ctx context.Context, st storage.Storer, req *oldtran
 }
 
 // Push sends a send-pack request to the server.
-func (s *PackSession) Push(ctx context.Context, st storage.Storer, req *oldtransport.PushRequest) error {
+func (s *PackSession) Push(ctx context.Context, st storage.Storer, req *PushRequest) error {
 	return sendPack(ctx, s.caps, s.w, io.NopCloser(s.r), req)
 }
 

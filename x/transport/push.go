@@ -9,7 +9,6 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/sideband"
-	oldtransport "github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/utils/ioutil"
 )
 
@@ -19,7 +18,7 @@ func sendPack(
 	caps *capability.List,
 	writer io.WriteCloser,
 	reader io.ReadCloser,
-	req *oldtransport.PushRequest,
+	req *PushRequest,
 ) error {
 	writer = ioutil.NewContextWriteCloser(ctx, writer)
 	reader = ioutil.NewContextReadCloser(ctx, reader)
@@ -120,7 +119,7 @@ func sendPack(
 	return reportError
 }
 
-func buildUpdateRequests(caps *capability.List, req *oldtransport.PushRequest) *packp.UpdateRequests {
+func buildUpdateRequests(caps *capability.List, req *PushRequest) *packp.UpdateRequests {
 	upreq := packp.NewUpdateRequests()
 
 	if caps.Supports(capability.ReportStatus) {
