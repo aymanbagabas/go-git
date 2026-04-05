@@ -194,10 +194,26 @@ func (s *smartPackSession) Push(ctx context.Context, st storage.Storer, req *tra
 
 func (s *smartPackSession) Close() error { return nil }
 
+// Archive implements transport.Archivable. Posts to /git-upload-archive.
+// Requires the server to advertise protocol v2 (checked during Handshake).
+func (s *smartPackSession) Archive(ctx context.Context, req *transport.ArchiveRequest) (io.ReadCloser, error) {
+	if s.version != protocol.V2 {
+		return nil, transport.ErrArchiveUnsupported
+	}
+	rwc := &httpRequester{session: s, ctx: ctx, service: transport.UploadArchiveService}
+	return transport.Archive(ctx, rwc, rwc, req)
+}
+
+var (
+	_ transport.Session    = (*smartPackSession)(nil)
+	_ transport.Archivable = (*smartPackSession)(nil)
+)
+
 // httpRequester buffers writes and fires a POST on first Read or Close.
 type httpRequester struct {
 	session *smartPackSession
 	ctx     context.Context
+	service string // overrides session.service if non-empty
 	buf     bytes.Buffer
 	resp    *http.Response
 }
@@ -221,7 +237,11 @@ func (r *httpRequester) Close() error {
 }
 
 func (r *httpRequester) doPost() error {
-	serviceURL, err := url.JoinPath(r.session.baseURL.String(), r.session.service)
+	svc := r.service
+	if svc == "" {
+		svc = r.session.service
+	}
+	serviceURL, err := url.JoinPath(r.session.baseURL.String(), svc)
 	if err != nil {
 		return err
 	}
@@ -229,8 +249,8 @@ func (r *httpRequester) doPost() error {
 	if err != nil {
 		return err
 	}
-	httpReq.Header.Set("Content-Type", fmt.Sprintf("application/x-%s-request", r.session.service))
-	httpReq.Header.Set("Accept", fmt.Sprintf("application/x-%s-result", r.session.service))
+	httpReq.Header.Set("Content-Type", fmt.Sprintf("application/x-%s-request", svc))
+	httpReq.Header.Set("Accept", fmt.Sprintf("application/x-%s-result", svc))
 	httpReq.Header.Set("User-Agent", capability.DefaultAgent())
 	if r.session.baseURL.User != nil {
 		password, _ := r.session.baseURL.User.Password()
