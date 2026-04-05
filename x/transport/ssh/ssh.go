@@ -18,7 +18,6 @@ import (
 
 	"github.com/go-git/go-git/v6/utils/ioutil"
 	transport "github.com/go-git/go-git/v6/x/transport"
-	"github.com/go-git/go-git/v6/x/transport/ssh/knownhosts"
 	"github.com/go-git/go-git/v6/x/transport/ssh/sshagent"
 )
 
@@ -223,9 +222,7 @@ func (t *Transport) dial(ctx context.Context, network, addr string, config *goss
 	return gossh.NewClient(c, chans, reqs), nil
 }
 
-func newKnownHostsDb(files ...string) (*knownhosts.HostKeyDB, error) {
-	return knownhosts.NewDB(files...)
-}
+
 
 func resolveHostWithPort(req *transport.Request) string {
 	hostname := req.URL.Hostname()
