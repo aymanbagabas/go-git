@@ -20,7 +20,7 @@ func TestStreamSession(t *testing.T) {
 
 	pr, pw := io.Pipe()
 	rwc := &pipeRWC{Reader: pr, Writer: pw}
-	s := NewStreamSession(rwc)
+	s := NewStreamSession(pr, pw, rwc.Close)
 
 	go func() {
 		_, err := s.Writer().Write([]byte("hello"))
@@ -84,7 +84,7 @@ func TestClient_Open(t *testing.T) {
 		openFn: func(_ context.Context, req *Request) (Session, error) {
 			called = true
 			assert.Equal(t, "git-upload-pack", req.Command)
-			return NewStreamSession(&pipeRWC{}), nil
+			return &mockSession{}, nil
 		},
 	}
 
@@ -141,7 +141,7 @@ func TestClient_CallOptionsOverride(t *testing.T) {
 			capturedOpts = opts
 			return &mockTransport{
 				openFn: func(context.Context, *Request) (Session, error) {
-					return NewStreamSession(&pipeRWC{}), nil
+					return &mockSession{}, nil
 				},
 			}
 		}),
@@ -242,3 +242,13 @@ func (m *mockTransport) Open(ctx context.Context, req *Request) (Session, error)
 	}
 	return nil, errors.New("not implemented")
 }
+
+type mockSession struct{}
+
+func (m *mockSession) Reader() io.Reader      { return &bytes.Buffer{} }
+func (m *mockSession) Writer() io.WriteCloser { return &mockWriteCloser{} }
+func (m *mockSession) Close() error           { return nil }
+
+type mockWriteCloser struct{ bytes.Buffer }
+
+func (m *mockWriteCloser) Close() error { return nil }

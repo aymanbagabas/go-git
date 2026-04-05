@@ -44,7 +44,8 @@ func (t *sshTransport) Open(ctx context.Context, req *transport.Request) (transp
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewStreamSession(rwc), nil
+	conn := rwc.(*sshConn)
+	return transport.NewStreamSession(conn.Reader, conn.WriteCloser, conn.Close), nil
 }
 
 func (t *sshTransport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
@@ -93,10 +94,10 @@ func (t *sshTransport) Connect(ctx context.Context, req *transport.Request) (io.
 	}
 
 	return &sshConn{
-		Reader:  stdoutPipe,
-		Writer:  stdinPipe,
-		session: session,
-		client:  client,
+		Reader:      stdoutPipe,
+		WriteCloser: stdinPipe,
+		session:     session,
+		client:      client,
 	}, nil
 }
 
@@ -161,7 +162,7 @@ func resolveHostWithPort(req *transport.Request) string {
 
 type sshConn struct {
 	io.Reader
-	io.Writer
+	io.WriteCloser
 	session *gossh.Session
 	client  *gossh.Client
 }

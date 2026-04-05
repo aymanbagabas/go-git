@@ -51,14 +51,22 @@ type fileTransport struct {
 }
 
 func (t *fileTransport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
-	rwc, err := t.Connect(ctx, req)
+	sr, pw, closeAll, err := t.connect(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewStreamSession(rwc), nil
+	return transport.NewStreamSession(sr, pw, closeAll), nil
 }
 
 func (t *fileTransport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
+	sr, pw, closeAll, err := t.connect(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &streamConn{Reader: sr, Writer: pw, closeFunc: closeAll}, nil
+}
+
+func (t *fileTransport) connect(ctx context.Context, req *transport.Request) (io.Reader, *io.PipeWriter, func() error, error) {
 	var serverFn ServerFunc
 	switch req.Command {
 	case "git-upload-pack":
@@ -66,12 +74,12 @@ func (t *fileTransport) Connect(ctx context.Context, req *transport.Request) (io
 	case "git-receive-pack":
 		serverFn = t.receivePack
 	default:
-		return nil, fmt.Errorf("%w: %s", transport.ErrCommandUnsupported, req.Command)
+		return nil, nil, nil, fmt.Errorf("%w: %s", transport.ErrCommandUnsupported, req.Command)
 	}
 
 	st, err := t.loader.Load(req.URL)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	gitProtocol := transport.GitProtocolEnv(req.Protocol)
@@ -79,11 +87,7 @@ func (t *fileTransport) Connect(ctx context.Context, req *transport.Request) (io
 	pr, pw := io.Pipe()
 	sr, sw := io.Pipe()
 
-	rwc := &streamConn{
-		Reader:    sr,
-		Writer:    pw,
-		closeFunc: func() error { _ = pw.Close(); return sr.Close() },
-	}
+	closeAll := func() error { _ = pw.Close(); return sr.Close() }
 
 	go func() {
 		err := serverFn(ctx, st, io.NopCloser(pr), sw, gitProtocol)
@@ -91,7 +95,7 @@ func (t *fileTransport) Connect(ctx context.Context, req *transport.Request) (io
 		_ = pr.Close()
 	}()
 
-	return rwc, nil
+	return sr, pw, closeAll, nil
 }
 
 type streamConn struct {

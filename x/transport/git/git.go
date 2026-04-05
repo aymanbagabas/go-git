@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
+	"github.com/go-git/go-git/v6/utils/ioutil"
 	transport "github.com/go-git/go-git/v6/x/transport"
 )
 
@@ -31,7 +32,7 @@ func (t *gitTransport) Open(ctx context.Context, req *transport.Request) (transp
 	if err != nil {
 		return nil, err
 	}
-	return transport.NewStreamSession(rwc), nil
+	return transport.NewStreamSession(rwc, ioutil.WriteNopCloser(rwc), rwc.Close), nil
 }
 
 func (t *gitTransport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
