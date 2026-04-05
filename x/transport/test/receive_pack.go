@@ -31,7 +31,7 @@ type ReceivePackSuite struct {
 	Storer              storage.Storer
 	EmptyStorer         storage.Storer
 	NonExistentStorer   storage.Storer
-	Client              *transport.Client
+	Transport           transport.Transport
 }
 
 // TearDownTest closes all storers.
@@ -43,8 +43,8 @@ func (s *ReceivePackSuite) TearDownTest() {
 	}
 }
 
-func (s *ReceivePackSuite) packClient() *transport.PackClient {
-	return transport.NewPackClient(s.Client)
+func (s *ReceivePackSuite) packClient() *transport.PackTransport {
+	return transport.NewPackTransport(s.Transport)
 }
 
 // TestAdvertisedReferencesEmpty tests advertised references on an empty repo.

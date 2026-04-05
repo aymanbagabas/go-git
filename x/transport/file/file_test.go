@@ -20,8 +20,7 @@ func TestFileTransport_Open(t *testing.T) {
 		"/fake/repo.git": memory.NewStorage(),
 	}
 
-	factory := NewFactory(loader)
-	tr := factory(transport.ClientOptions{})
+	tr := NewTransport(Options{Loader: loader})
 
 	req := &transport.Request{
 		URL:     &url.URL{Scheme: "file", Path: "/fake/repo.git"},
@@ -41,18 +40,14 @@ func TestFileTransport_Connect(t *testing.T) {
 		"/fake/repo.git": memory.NewStorage(),
 	}
 
-	factory := NewFactory(loader)
-	tr := factory(transport.ClientOptions{})
-
-	connectable, ok := tr.(transport.Connectable)
-	require.True(t, ok)
+	tr := NewTransport(Options{Loader: loader})
 
 	req := &transport.Request{
 		URL:     &url.URL{Scheme: "file", Path: "/fake/repo.git"},
 		Command: "git-receive-pack",
 	}
 
-	rwc, err := connectable.Connect(context.Background(), req)
+	rwc, err := tr.Connect(context.Background(), req)
 	require.NoError(t, err)
 	require.NotNil(t, rwc)
 	require.NoError(t, rwc.Close())
@@ -65,18 +60,14 @@ func TestFileTransport_UnsupportedCommand(t *testing.T) {
 		"/fake/repo.git": memory.NewStorage(),
 	}
 
-	factory := NewFactory(loader)
-	tr := factory(transport.ClientOptions{})
-
-	connectable, ok := tr.(transport.Connectable)
-	require.True(t, ok)
+	tr := NewTransport(Options{Loader: loader})
 
 	req := &transport.Request{
 		URL:     &url.URL{Scheme: "file", Path: "/fake/repo.git"},
 		Command: "git-fake-command",
 	}
 
-	_, err := connectable.Connect(context.Background(), req)
+	_, err := tr.Connect(context.Background(), req)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, transport.ErrCommandUnsupported)
 }
@@ -86,8 +77,7 @@ func TestFileTransport_RepoNotFound(t *testing.T) {
 
 	loader := transport.MapLoader{}
 
-	factory := NewFactory(loader)
-	tr := factory(transport.ClientOptions{})
+	tr := NewTransport(Options{Loader: loader})
 
 	req := &transport.Request{
 		URL:     &url.URL{Scheme: "file", Path: "/nonexistent.git"},
@@ -101,10 +91,9 @@ func TestFileTransport_RepoNotFound(t *testing.T) {
 func TestFileTransport_ImplementsConnectable(t *testing.T) {
 	t.Parallel()
 
-	factory := NewFactory(nil)
-	tr := factory(transport.ClientOptions{})
+	tr := NewTransport(Options{})
 
-	_, ok := tr.(transport.Connectable)
+	_, ok := interface{}(tr).(transport.Connectable)
 	assert.True(t, ok)
 }
 

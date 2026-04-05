@@ -11,7 +11,6 @@ import (
 	oldtest "github.com/go-git/go-git/v6/internal/transport/test"
 	"github.com/go-git/go-git/v6/storage/filesystem"
 	"github.com/go-git/go-git/v6/storage/memory"
-	transport "github.com/go-git/go-git/v6/x/transport"
 	xtest "github.com/go-git/go-git/v6/x/transport/test"
 )
 
@@ -43,8 +42,5 @@ func (s *receivePackSuite) SetupTest() {
 	s.EmptyStorer = filesystem.NewStorage(emptyFS, nil)
 	s.NonExistentStorer = memory.NewStorage()
 
-	s.Client = transport.NewClient(
-		transport.WithoutBuiltins(),
-		transport.WithScheme("file", NewFactory(nil)),
-	)
+	s.Transport = NewTransport(Options{})
 }

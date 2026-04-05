@@ -73,8 +73,7 @@ func TestGitTransport_Open(t *testing.T) {
 	_ = test.PrepareRepository(t, fixtures.Basic().One(), base, "basic.git")
 	startDaemon(t, base, port)
 
-	factory := NewFactory()
-	tr := factory(transport.ClientOptions{})
+	tr := NewTransport(Options{})
 
 	req := &transport.Request{
 		URL: &url.URL{
@@ -106,11 +105,7 @@ func TestGitTransport_Connect(t *testing.T) {
 	_ = test.PrepareRepository(t, fixtures.Basic().One(), base, "basic.git")
 	startDaemon(t, base, port)
 
-	factory := NewFactory()
-	tr := factory(transport.ClientOptions{})
-
-	connectable, ok := tr.(transport.Connectable)
-	require.True(t, ok)
+	tr := NewTransport(Options{})
 
 	req := &transport.Request{
 		URL: &url.URL{
@@ -122,7 +117,7 @@ func TestGitTransport_Connect(t *testing.T) {
 		Protocol: protocol.V0,
 	}
 
-	rwc, err := connectable.Connect(context.Background(), req)
+	rwc, err := tr.Connect(context.Background(), req)
 	require.NoError(t, err)
 	require.NotNil(t, rwc)
 
@@ -137,11 +132,7 @@ func TestGitTransport_Connect(t *testing.T) {
 func TestGitTransport_ConnectFail(t *testing.T) {
 	t.Parallel()
 
-	factory := NewFactory()
-	tr := factory(transport.ClientOptions{})
-
-	connectable, ok := tr.(transport.Connectable)
-	require.True(t, ok)
+	tr := NewTransport(Options{})
 
 	req := &transport.Request{
 		URL: &url.URL{
@@ -152,6 +143,6 @@ func TestGitTransport_ConnectFail(t *testing.T) {
 		Command: "git-upload-pack",
 	}
 
-	_, err := connectable.Connect(context.Background(), req)
+	_, err := tr.Connect(context.Background(), req)
 	require.Error(t, err)
 }

@@ -16,18 +16,28 @@ import (
 // DefaultPort is the default port for the git protocol.
 const DefaultPort = 9418
 
-// NewFactory returns a transport.Factory that creates Git TCP transports.
-func NewFactory() transport.Factory {
-	return func(opts transport.ClientOptions) transport.Transport {
-		return &gitTransport{opts: opts}
-	}
+// Options configures the Git TCP transport.
+type Options struct {
+	// DialContext is the function used to establish TCP connections.
+	// If nil, net.Dialer{}.DialContext is used.
+	DialContext transport.DialContextFunc
+
+	// DialProxy wraps DialContext to route connections through a proxy.
+	// If nil, connections are made directly.
+	DialProxy func(transport.DialContextFunc) transport.DialContextFunc
 }
 
-type gitTransport struct {
-	opts transport.ClientOptions
+// Transport implements the git:// transport protocol.
+type Transport struct {
+	opts Options
 }
 
-func (t *gitTransport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
+// NewTransport creates a Git TCP transport with the given options.
+func NewTransport(opts Options) *Transport {
+	return &Transport{opts: opts}
+}
+
+func (t *Transport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
 	rwc, err := t.Connect(ctx, req)
 	if err != nil {
 		return nil, err
@@ -35,7 +45,7 @@ func (t *gitTransport) Open(ctx context.Context, req *transport.Request) (transp
 	return transport.NewStreamSession(rwc, ioutil.WriteNopCloser(rwc), rwc.Close), nil
 }
 
-func (t *gitTransport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
+func (t *Transport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
 	host := req.URL.Hostname()
 	port := req.URL.Port()
 	if port == "" {
@@ -43,13 +53,13 @@ func (t *gitTransport) Connect(ctx context.Context, req *transport.Request) (io.
 	}
 	addr := net.JoinHostPort(host, port)
 
-	dialFn := t.opts.Dial.DialContext
+	dialFn := t.opts.DialContext
 	if dialFn == nil {
 		dialFn = (&net.Dialer{}).DialContext
 	}
 
-	if t.opts.Proxy.DialProxy != nil {
-		dialFn = t.opts.Proxy.DialProxy(dialFn)
+	if t.opts.DialProxy != nil {
+		dialFn = t.opts.DialProxy(dialFn)
 	}
 
 	conn, err := dialFn(ctx, "tcp", addr)
@@ -61,7 +71,10 @@ func (t *gitTransport) Connect(ctx context.Context, req *transport.Request) (io.
 		RequestCommand: req.Command,
 		Pathname:       req.URL.Path,
 		Host:           net.JoinHostPort(host, port),
-		ExtraParams:    transport.GitProtocolExtraParams(req.Protocol),
+	}
+
+	if gp := transport.GitProtocolEnv(req.Protocol); gp != "" {
+		proto.ExtraParams = append(proto.ExtraParams, gp)
 	}
 
 	if err := proto.Encode(conn); err != nil {

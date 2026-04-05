@@ -23,8 +23,7 @@ func TestFileTransport_Integration_UploadPack(t *testing.T) {
 	repoPath, err := filepath.Abs(repoFS.Root())
 	require.NoError(t, err)
 
-	factory := NewFactory(nil)
-	tr := factory(transport.ClientOptions{})
+	tr := NewTransport(Options{})
 
 	req := &transport.Request{
 		URL:      &url.URL{Scheme: "file", Path: repoPath},
@@ -52,8 +51,7 @@ func TestFileTransport_Integration_ReceivePack(t *testing.T) {
 	repoPath, err := filepath.Abs(repoFS.Root())
 	require.NoError(t, err)
 
-	factory := NewFactory(nil)
-	tr := factory(transport.ClientOptions{})
+	tr := NewTransport(Options{})
 
 	req := &transport.Request{
 		URL:      &url.URL{Scheme: "file", Path: repoPath},
@@ -81,11 +79,7 @@ func TestFileTransport_Integration_Connect(t *testing.T) {
 	repoPath, err := filepath.Abs(repoFS.Root())
 	require.NoError(t, err)
 
-	factory := NewFactory(nil)
-	tr := factory(transport.ClientOptions{})
-
-	connectable, ok := tr.(transport.Connectable)
-	require.True(t, ok)
+	tr := NewTransport(Options{})
 
 	req := &transport.Request{
 		URL:      &url.URL{Scheme: "file", Path: repoPath},
@@ -93,7 +87,7 @@ func TestFileTransport_Integration_Connect(t *testing.T) {
 		Protocol: protocol.V0,
 	}
 
-	rwc, err := connectable.Connect(context.Background(), req)
+	rwc, err := tr.Connect(context.Background(), req)
 	require.NoError(t, err)
 	require.NotNil(t, rwc)
 
@@ -108,8 +102,7 @@ func TestFileTransport_Integration_Connect(t *testing.T) {
 func TestFileTransport_Integration_NonExistentRepo(t *testing.T) {
 	t.Parallel()
 
-	factory := NewFactory(nil)
-	tr := factory(transport.ClientOptions{})
+	tr := NewTransport(Options{})
 
 	req := &transport.Request{
 		URL:     &url.URL{Scheme: "file", Path: "/nonexistent/repo.git"},

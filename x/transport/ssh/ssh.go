@@ -28,18 +28,31 @@ type Config interface {
 	Get(alias, key string) string
 }
 
-// NewFactory returns a transport.Factory that creates SSH transports.
-func NewFactory() transport.Factory {
-	return func(opts transport.ClientOptions) transport.Transport {
-		return &sshTransport{opts: opts}
-	}
+// Options configures the SSH transport.
+type Options struct {
+	// ClientConfig provides SSH client configuration for each request.
+	ClientConfig func(context.Context, *transport.Request) (*gossh.ClientConfig, error)
+
+	// DialContext is the function used to establish TCP connections.
+	// If nil, golang.org/x/net/proxy.Dial is used.
+	DialContext transport.DialContextFunc
+
+	// DialProxy wraps DialContext to route connections through a proxy.
+	// If nil, connections are made directly.
+	DialProxy func(transport.DialContextFunc) transport.DialContextFunc
 }
 
-type sshTransport struct {
-	opts transport.ClientOptions
+// Transport implements the ssh:// transport protocol.
+type Transport struct {
+	opts Options
 }
 
-func (t *sshTransport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
+// NewTransport creates an SSH transport with the given options.
+func NewTransport(opts Options) *Transport {
+	return &Transport{opts: opts}
+}
+
+func (t *Transport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
 	rwc, err := t.Connect(ctx, req)
 	if err != nil {
 		return nil, err
@@ -48,7 +61,7 @@ func (t *sshTransport) Open(ctx context.Context, req *transport.Request) (transp
 	return transport.NewStreamSession(conn.Reader, conn.WriteCloser, conn.Close), nil
 }
 
-func (t *sshTransport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
+func (t *Transport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
 	config, err := t.resolveConfig(ctx, req)
 	if err != nil {
 		return nil, err
@@ -56,7 +69,7 @@ func (t *sshTransport) Connect(ctx context.Context, req *transport.Request) (io.
 
 	hostWithPort := resolveHostWithPort(req)
 
-	client, err := dial(ctx, "tcp", hostWithPort, t.opts, config)
+	client, err := t.dial(ctx, "tcp", hostWithPort, config)
 	if err != nil {
 		return nil, err
 	}
@@ -101,27 +114,26 @@ func (t *sshTransport) Connect(ctx context.Context, req *transport.Request) (io.
 	}, nil
 }
 
-func (t *sshTransport) resolveConfig(ctx context.Context, req *transport.Request) (*gossh.ClientConfig, error) {
-	if t.opts.SSH.ClientConfig != nil {
-		return t.opts.SSH.ClientConfig(ctx, req)
+func (t *Transport) resolveConfig(ctx context.Context, req *transport.Request) (*gossh.ClientConfig, error) {
+	if t.opts.ClientConfig != nil {
+		return t.opts.ClientConfig(ctx, req)
 	}
 	return nil, fmt.Errorf("ssh: no ClientConfig provider configured")
 }
 
-func dial(ctx context.Context, network, addr string, opts transport.ClientOptions, config *gossh.ClientConfig) (*gossh.Client, error) {
+func (t *Transport) dial(ctx context.Context, network, addr string, config *gossh.ClientConfig) (*gossh.Client, error) {
 	var conn net.Conn
 	var err error
 
 	switch {
-	case opts.Proxy.DialProxy != nil:
-		dialFn := opts.Dial.DialContext
+	case t.opts.DialProxy != nil:
+		dialFn := t.opts.DialContext
 		if dialFn == nil {
 			dialFn = (&net.Dialer{}).DialContext
 		}
-		wrappedDial := opts.Proxy.DialProxy(dialFn)
-		conn, err = wrappedDial(ctx, network, addr)
-	case opts.Dial.DialContext != nil:
-		conn, err = opts.Dial.DialContext(ctx, network, addr)
+		conn, err = t.opts.DialProxy(dialFn)(ctx, network, addr)
+	case t.opts.DialContext != nil:
+		conn, err = t.opts.DialContext(ctx, network, addr)
 	default:
 		conn, err = proxy.Dial(ctx, network, addr)
 	}
@@ -172,9 +184,6 @@ func (c *sshConn) Close() error {
 	return c.client.Close()
 }
 
-// buildCommand constructs the remote command string from the request.
-// For example: git-upload-pack '/repo.git'
-// Or with args: git-lfs-authenticate '/repo.git' 'download'
 func buildCommand(req *transport.Request) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s '%s'", req.Command, req.URL.Path)

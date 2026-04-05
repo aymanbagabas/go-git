@@ -2,7 +2,6 @@ package transport
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -76,141 +75,28 @@ func TestHTTPSession_DoFuncError(t *testing.T) {
 	assert.Contains(t, err.Error(), "connection refused")
 }
 
-func TestClient_Open(t *testing.T) {
+func TestGitProtocolEnv(t *testing.T) {
 	t.Parallel()
 
-	called := false
-	testTransport := &mockTransport{
-		openFn: func(_ context.Context, req *Request) (Session, error) {
-			called = true
-			assert.Equal(t, "git-upload-pack", req.Command)
-			return &mockSession{}, nil
-		},
-	}
+	assert.Equal(t, "", GitProtocolEnv(protocol.V0))
+	assert.Equal(t, "version=1", GitProtocolEnv(protocol.V1))
+	assert.Equal(t, "version=2", GitProtocolEnv(protocol.V2))
+}
 
-	c := NewClient(
-		WithoutBuiltins(),
-		WithScheme("ssh", func(ClientOptions) Transport { return testTransport }),
-	)
-	defer c.Close()
+func TestRequest(t *testing.T) {
+	t.Parallel()
 
 	req := &Request{
 		URL:      &url.URL{Scheme: "ssh", Host: "github.com", Path: "/foo/bar.git"},
 		Command:  "git-upload-pack",
+		Args:     []string{"download"},
 		Protocol: protocol.V2,
 	}
 
-	sess, err := c.Open(context.Background(), req)
-	require.NoError(t, err)
-	assert.True(t, called)
-	require.NoError(t, sess.Close())
-}
-
-func TestClient_UnsupportedScheme(t *testing.T) {
-	t.Parallel()
-
-	c := NewClient(WithoutBuiltins())
-	defer c.Close()
-
-	req := &Request{
-		URL: &url.URL{Scheme: "ftp", Host: "example.com"},
-	}
-
-	_, err := c.Open(context.Background(), req)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported scheme")
-}
-
-func TestClient_NilRequest(t *testing.T) {
-	t.Parallel()
-
-	c := NewClient(WithoutBuiltins())
-	defer c.Close()
-
-	_, err := c.Open(context.Background(), nil)
-	require.Error(t, err)
-}
-
-func TestClient_CallOptionsOverride(t *testing.T) {
-	t.Parallel()
-
-	var capturedOpts ClientOptions
-	c := NewClient(
-		WithoutBuiltins(),
-		WithScheme("ssh", func(opts ClientOptions) Transport {
-			capturedOpts = opts
-			return &mockTransport{
-				openFn: func(context.Context, *Request) (Session, error) {
-					return &mockSession{}, nil
-				},
-			}
-		}),
-		WithProxy(ProxyOptions{
-			HTTPProxy: http.ProxyFromEnvironment,
-		}),
-	)
-	defer c.Close()
-
-	req := &Request{
-		URL: &url.URL{Scheme: "ssh", Host: "github.com", Path: "/foo.git"},
-	}
-
-	overrideProxy := func(_ *http.Request) (*url.URL, error) {
-		return url.Parse("socks5://proxy:1080")
-	}
-
-	sess, err := c.Open(context.Background(), req, WithCallProxy(ProxyOptions{
-		HTTPProxy: overrideProxy,
-	}))
-	require.NoError(t, err)
-	require.NoError(t, sess.Close())
-
-	assert.NotNil(t, capturedOpts.Proxy.HTTPProxy)
-	proxyURL, _ := capturedOpts.Proxy.HTTPProxy(nil)
-	assert.Equal(t, "socks5://proxy:1080", proxyURL.String())
-}
-
-func TestClient_Transport(t *testing.T) {
-	t.Parallel()
-
-	testTransport := &mockTransport{}
-
-	c := NewClient(
-		WithoutBuiltins(),
-		WithScheme("git", func(ClientOptions) Transport { return testTransport }),
-	)
-	defer c.Close()
-
-	tr, err := c.Transport("git")
-	require.NoError(t, err)
-	assert.Equal(t, testTransport, tr)
-
-	_, err = c.Transport("ftp")
-	require.Error(t, err)
-}
-
-func TestResolveOptions(t *testing.T) {
-	t.Parallel()
-
-	defaults := ClientOptions{
-		HTTP: HTTPOptions{
-			Authorizer: func(*http.Request) error { return nil },
-		},
-	}
-
-	overrides := &CallOptions{
-		HTTP: &HTTPOptions{
-			Authorizer: func(*http.Request) error { return errors.New("override") },
-		},
-	}
-
-	resolved := resolveOptions(defaults, overrides)
-	err := resolved.HTTP.Authorizer(nil)
-	require.Error(t, err)
-	assert.Equal(t, "override", err.Error())
-
-	resolved2 := resolveOptions(defaults, nil)
-	require.NoError(t, resolved2.HTTP.Authorizer(nil))
+	assert.Equal(t, "ssh", req.URL.Scheme)
+	assert.Equal(t, "/foo/bar.git", req.URL.Path)
+	assert.Equal(t, "git-upload-pack", req.Command)
+	assert.Equal(t, protocol.V2, req.Protocol)
 }
 
 // test helpers
@@ -231,24 +117,3 @@ func (p *pipeRWC) Close() error {
 	}
 	return nil
 }
-
-type mockTransport struct {
-	openFn func(context.Context, *Request) (Session, error)
-}
-
-func (m *mockTransport) Open(ctx context.Context, req *Request) (Session, error) {
-	if m.openFn != nil {
-		return m.openFn(ctx, req)
-	}
-	return nil, errors.New("not implemented")
-}
-
-type mockSession struct{}
-
-func (m *mockSession) Reader() io.Reader      { return &bytes.Buffer{} }
-func (m *mockSession) Writer() io.WriteCloser { return &mockWriteCloser{} }
-func (m *mockSession) Close() error           { return nil }
-
-type mockWriteCloser struct{ bytes.Buffer }
-
-func (m *mockWriteCloser) Close() error { return nil }

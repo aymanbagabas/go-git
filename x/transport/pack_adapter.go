@@ -14,28 +14,26 @@ import (
 	"github.com/go-git/go-git/v6/storage"
 )
 
-// PackClient creates pack protocol sessions on top of the transport Client.
-type PackClient struct {
-	client *Client
+// PackTransport creates pack protocol sessions on top of a Transport.
+type PackTransport struct {
+	tr Transport
 }
 
-// NewPackClient creates a PackClient that uses the given transport Client.
-func NewPackClient(client *Client) *PackClient {
-	return &PackClient{client: client}
+// NewPackTransport creates a PackTransport that speaks the pack protocol
+// over the given Transport.
+func NewPackTransport(tr Transport) *PackTransport {
+	return &PackTransport{tr: tr}
 }
 
 // Handshake opens a transport session for the given service, reads the
 // advertised refs and capabilities, and returns a PackSession.
-//
-// The pack adapter builds the Request internally — callers provide the
-// URL and service command name, and the adapter sets the correct command.
-func (c *PackClient) Handshake(ctx context.Context, u *url.URL, service string, opts ...CallOption) (*PackSession, error) {
+func (c *PackTransport) Handshake(ctx context.Context, u *url.URL, service string) (*PackSession, error) {
 	req := &Request{
 		URL:     u,
 		Command: service,
 	}
 
-	sess, err := c.client.Open(ctx, req, opts...)
+	sess, err := c.tr.Open(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -73,9 +71,7 @@ func (c *PackClient) Handshake(ctx context.Context, u *url.URL, service string, 
 	}, nil
 }
 
-// PackSession is a connected pack protocol session. It provides access
-// to advertised refs and capabilities, and supports fetch and push
-// operations over the underlying transport session.
+// PackSession is a connected pack protocol session.
 type PackSession struct {
 	sess    Session
 	r       *bufio.Reader

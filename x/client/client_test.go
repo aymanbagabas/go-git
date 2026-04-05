@@ -1,18 +1,19 @@
-package transportx
+package client
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	transport "github.com/go-git/go-git/v6/x/transport"
+	"github.com/go-git/go-git/v6/x/transport"
 )
 
-func TestNewClient_BuiltinSchemes(t *testing.T) {
+func TestNew_BuiltinSchemes(t *testing.T) {
 	t.Parallel()
 
-	c := NewClient()
+	c := New(Options{})
 	defer c.Close()
 
 	for _, scheme := range []string{"file", "git", "http", "https", "ssh"} {
@@ -22,10 +23,10 @@ func TestNewClient_BuiltinSchemes(t *testing.T) {
 	}
 }
 
-func TestNewClient_ConnectableSchemes(t *testing.T) {
+func TestNew_ConnectableSchemes(t *testing.T) {
 	t.Parallel()
 
-	c := NewClient()
+	c := New(Options{})
 	defer c.Close()
 
 	for _, scheme := range []string{"file", "git", "ssh"} {
@@ -36,10 +37,10 @@ func TestNewClient_ConnectableSchemes(t *testing.T) {
 	}
 }
 
-func TestNewClient_HTTPNotConnectable(t *testing.T) {
+func TestNew_HTTPNotConnectable(t *testing.T) {
 	t.Parallel()
 
-	c := NewClient()
+	c := New(Options{})
 	defer c.Close()
 
 	for _, scheme := range []string{"http", "https"} {
@@ -50,19 +51,39 @@ func TestNewClient_HTTPNotConnectable(t *testing.T) {
 	}
 }
 
-func TestNewClient_CustomOptionsMerge(t *testing.T) {
+func TestNew_UnsupportedScheme(t *testing.T) {
 	t.Parallel()
 
-	c := NewClient(transport.WithScheme("custom", func(transport.ClientOptions) transport.Transport {
-		return nil
-	}))
+	c := New(Options{})
 	defer c.Close()
+
+	_, err := c.Transport("ftp")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported scheme")
+}
+
+func TestRegisterTransport(t *testing.T) {
+	t.Parallel()
+
+	c := New(Options{})
+	defer c.Close()
+
+	custom := &mockTransport{}
+	c.RegisterTransport("custom", custom)
 
 	tr, err := c.Transport("custom")
 	require.NoError(t, err)
-	assert.Nil(t, tr)
+	assert.Equal(t, custom, tr)
 
+	// Override builtin
+	c.RegisterTransport("ssh", custom)
 	tr, err = c.Transport("ssh")
 	require.NoError(t, err)
-	assert.NotNil(t, tr)
+	assert.Equal(t, custom, tr)
+}
+
+type mockTransport struct{}
+
+func (m *mockTransport) Open(_ context.Context, _ *transport.Request) (transport.Session, error) {
+	return nil, nil
 }

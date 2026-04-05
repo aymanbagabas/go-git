@@ -1,12 +1,17 @@
 package transport
 
 import (
+	"context"
 	"io"
+	"net"
 
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/sideband"
 )
+
+// DialContextFunc is the function signature for dialing network connections.
+type DialContextFunc func(ctx context.Context, network, address string) (net.Conn, error)
 
 // RemoteError represents an error returned by the remote.
 // TODO: embed error

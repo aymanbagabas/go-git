@@ -75,8 +75,8 @@ func handlerSSH(s ssh.Session) {
 	_ = s.Exit(0)
 }
 
-func sshClientConfig() transport.SSHOptions {
-	return transport.SSHOptions{
+func sshClientOptions() Options {
+	return Options{
 		ClientConfig: func(_ context.Context, _ *transport.Request) (*stdssh.ClientConfig, error) {
 			return &stdssh.ClientConfig{
 				User:            "git",
@@ -95,10 +95,7 @@ func TestSSHTransport_Open(t *testing.T) {
 	repoFS := test.PrepareRepository(t, fixtures.Basic().One(), base, "basic.git")
 	repoPath := filepath.ToSlash(repoFS.Root())
 
-	factory := NewFactory()
-	tr := factory(transport.ClientOptions{
-		SSH: sshClientConfig(),
-	})
+	tr := NewTransport(sshClientOptions())
 
 	req := &transport.Request{
 		URL: &url.URL{
@@ -131,13 +128,7 @@ func TestSSHTransport_Connect(t *testing.T) {
 	repoFS := test.PrepareRepository(t, fixtures.Basic().One(), base, "basic.git")
 	repoPath := filepath.ToSlash(repoFS.Root())
 
-	factory := NewFactory()
-	tr := factory(transport.ClientOptions{
-		SSH: sshClientConfig(),
-	})
-
-	connectable, ok := tr.(transport.Connectable)
-	require.True(t, ok)
+	tr := NewTransport(sshClientOptions())
 
 	req := &transport.Request{
 		URL: &url.URL{
@@ -150,7 +141,7 @@ func TestSSHTransport_Connect(t *testing.T) {
 		Protocol: protocol.V0,
 	}
 
-	rwc, err := connectable.Connect(context.Background(), req)
+	rwc, err := tr.Connect(context.Background(), req)
 	require.NoError(t, err)
 	require.NotNil(t, rwc)
 
@@ -165,8 +156,7 @@ func TestSSHTransport_Connect(t *testing.T) {
 func TestSSHTransport_NoConfig(t *testing.T) {
 	t.Parallel()
 
-	factory := NewFactory()
-	tr := factory(transport.ClientOptions{})
+	tr := NewTransport(Options{})
 
 	req := &transport.Request{
 		URL: &url.URL{

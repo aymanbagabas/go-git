@@ -11,10 +11,8 @@ import (
 )
 
 // ServerFunc is a function that runs a git server-side command over pipes.
-// It reads from r, writes to w, and uses st for object storage.
 type ServerFunc func(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, gitProtocol string) error
 
-// defaultUploadPack wraps the old transport.UploadPack into a ServerFunc.
 func defaultUploadPack(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, gitProtocol string) error {
 	return transport.UploadPack(ctx, st, r, w, &transport.UploadPackOptions{
 		GitProtocol:          gitProtocol,
@@ -22,35 +20,40 @@ func defaultUploadPack(ctx context.Context, st storage.Storer, r io.ReadCloser, 
 	})
 }
 
-// defaultReceivePack wraps the old transport.ReceivePack into a ServerFunc.
 func defaultReceivePack(ctx context.Context, st storage.Storer, r io.ReadCloser, w io.WriteCloser, gitProtocol string) error {
 	return transport.ReceivePack(ctx, st, r, w, &transport.ReceivePackOptions{
 		GitProtocol: gitProtocol,
 	})
 }
 
-// NewFactory returns a transport.Factory that creates file transports
-// using the given Loader. If loader is nil, DefaultLoader is used.
-func NewFactory(loader transport.Loader) transport.Factory {
-	return func(_ transport.ClientOptions) transport.Transport {
-		if loader == nil {
-			loader = transport.DefaultLoader
-		}
-		return &fileTransport{
-			loader:      loader,
-			uploadPack:  defaultUploadPack,
-			receivePack: defaultReceivePack,
-		}
-	}
+// Options configures the file transport.
+type Options struct {
+	// Loader resolves URLs to storage.Storer instances. If nil,
+	// transport.DefaultLoader is used.
+	Loader transport.Loader
 }
 
-type fileTransport struct {
+// Transport implements the file:// transport protocol.
+type Transport struct {
 	loader      transport.Loader
 	uploadPack  ServerFunc
 	receivePack ServerFunc
 }
 
-func (t *fileTransport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
+// NewTransport creates a file transport with the given options.
+func NewTransport(opts Options) *Transport {
+	loader := opts.Loader
+	if loader == nil {
+		loader = transport.DefaultLoader
+	}
+	return &Transport{
+		loader:      loader,
+		uploadPack:  defaultUploadPack,
+		receivePack: defaultReceivePack,
+	}
+}
+
+func (t *Transport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
 	sr, pw, closeAll, err := t.connect(ctx, req)
 	if err != nil {
 		return nil, err
@@ -58,7 +61,7 @@ func (t *fileTransport) Open(ctx context.Context, req *transport.Request) (trans
 	return transport.NewStreamSession(sr, pw, closeAll), nil
 }
 
-func (t *fileTransport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
+func (t *Transport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
 	sr, pw, closeAll, err := t.connect(ctx, req)
 	if err != nil {
 		return nil, err
@@ -66,7 +69,7 @@ func (t *fileTransport) Connect(ctx context.Context, req *transport.Request) (io
 	return &streamConn{Reader: sr, Writer: pw, closeFunc: closeAll}, nil
 }
 
-func (t *fileTransport) connect(ctx context.Context, req *transport.Request) (io.Reader, *io.PipeWriter, func() error, error) {
+func (t *Transport) connect(ctx context.Context, req *transport.Request) (io.Reader, *io.PipeWriter, func() error, error) {
 	var serverFn ServerFunc
 	switch req.Command {
 	case "git-upload-pack":
