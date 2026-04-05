@@ -9,12 +9,14 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/sideband"
+	"github.com/go-git/go-git/v6/storage"
 	"github.com/go-git/go-git/v6/utils/ioutil"
 )
 
-// sendPack sends a packfile to a remote server.
+// SendPack sends a packfile to a remote server.
 func SendPack(
 	ctx context.Context,
+	_ storage.Storer,
 	caps *capability.List,
 	writer io.WriteCloser,
 	reader io.ReadCloser,

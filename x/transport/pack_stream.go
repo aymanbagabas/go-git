@@ -87,8 +87,8 @@ func (s *StreamSession) Fetch(ctx context.Context, st storage.Storer, req *Fetch
 }
 
 // Push implements PackSession.
-func (s *StreamSession) Push(ctx context.Context, _ storage.Storer, req *PushRequest) error {
-	return SendPack(ctx, s.caps, s.w, io.NopCloser(s.r), req)
+func (s *StreamSession) Push(ctx context.Context, st storage.Storer, req *PushRequest) error {
+	return SendPack(ctx, st, s.caps, s.w, io.NopCloser(s.r), req)
 }
 
 // Close implements PackSession.

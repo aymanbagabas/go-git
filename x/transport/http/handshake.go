@@ -178,9 +178,9 @@ func (s *smartPackSession) Fetch(ctx context.Context, st storage.Storer, req *tr
 	return transport.FetchPack(ctx, st, s.caps, io.NopCloser(rwc), shallows, req)
 }
 
-func (s *smartPackSession) Push(ctx context.Context, _ storage.Storer, req *transport.PushRequest) error {
+func (s *smartPackSession) Push(ctx context.Context, st storage.Storer, req *transport.PushRequest) error {
 	rwc := &httpRequester{session: s, ctx: ctx}
-	return transport.SendPack(ctx, s.caps, rwc, io.NopCloser(rwc), req)
+	return transport.SendPack(ctx, st, s.caps, rwc, io.NopCloser(rwc), req)
 }
 
 func (s *smartPackSession) Close() error { return nil }

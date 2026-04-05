@@ -17,7 +17,7 @@ import (
 	xstorage "github.com/go-git/go-git/v6/x/storage"
 )
 
-// negotiatePack performs the pack negotiation phase of the fetch operation.
+// NegotiatePack performs the pack negotiation phase of the fetch operation.
 func NegotiatePack(
 	ctx context.Context,
 	st storage.Storer,

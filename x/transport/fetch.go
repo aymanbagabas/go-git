@@ -12,7 +12,7 @@ import (
 	"github.com/go-git/go-git/v6/utils/ioutil"
 )
 
-// fetchPack fetches a packfile from the remote into the given storage.
+// FetchPack fetches a packfile from the remote into the given storage.
 func FetchPack(
 	ctx context.Context,
 	st storage.Storer,
