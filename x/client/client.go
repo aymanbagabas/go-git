@@ -1,5 +1,5 @@
 // Package client provides a convenience Client that resolves URL schemes
-// to transport implementations and provides Open/Connect methods.
+// to transport implementations and provides Handshake/Connect methods.
 package client
 
 import (

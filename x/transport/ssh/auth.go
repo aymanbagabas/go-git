@@ -79,7 +79,7 @@ type PublicKeys struct {
 // NewPublicKeys returns a PublicKeys from a PEM encoded private key. An
 // encryption password should be given if the pemBytes contains a password
 // encrypted PEM block otherwise password should be empty. It supports RSA
-// (PKCS#1), PKCS#8, DSA (OpenSSL), and ECDSA private keys.
+// (PKCS#1), PKCS#8, DSA (OpenSSL), ECDSA, and Ed25519 private keys.
 func NewPublicKeys(user string, pemBytes []byte, password string) (*PublicKeys, error) {
 	signer, err := gossh.ParsePrivateKey(pemBytes)
 	if _, ok := err.(*gossh.PassphraseMissingError); ok {
@@ -92,7 +92,7 @@ func NewPublicKeys(user string, pemBytes []byte, password string) (*PublicKeys, 
 }
 
 // NewPublicKeysFromFile returns a PublicKeys from a file containing a PEM
-// encoded private key. An encryption password should be given if the pemBytes
+// encoded private key. An encryption password should be given if the file
 // contains a password encrypted PEM block otherwise password should be empty.
 func NewPublicKeysFromFile(user, pemFile, password string) (*PublicKeys, error) {
 	bytes, err := os.ReadFile(pemFile)

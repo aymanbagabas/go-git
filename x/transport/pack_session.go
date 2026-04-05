@@ -8,14 +8,14 @@ import (
 	"github.com/go-git/go-git/v6/storage"
 )
 
-// PackTransport is implemented by transports that speak the Git pack
+// Transport is implemented by transports that speak the Git pack
 // protocol. Each transport implements this directly — stream transports
 // use the NewStreamSession helper, HTTP handles smart/dumb internally.
 type Transport interface {
 	Handshake(ctx context.Context, req *Request) (Session, error)
 }
 
-// Session is returned by PackTransport.Handshake.
+// Session is returned by Transport.Handshake.
 type Session interface {
 	Capabilities() *capability.List
 	GetRemoteRefs(ctx context.Context) ([]*plumbing.Reference, error)
