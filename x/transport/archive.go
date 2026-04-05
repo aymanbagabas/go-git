@@ -83,7 +83,7 @@ func Archive(ctx context.Context, w io.WriteCloser, r io.Reader, req *ArchiveReq
 		return nil, fmt.Errorf("archive: expected flush after ACK, got data")
 	}
 
-	demuxer := sideband.NewDemuxer(sideband.Sideband, rd)
+	demuxer := sideband.NewDemuxer(sideband.Sideband64k, rd)
 	if req.Progress != nil {
 		demuxer.Progress = req.Progress
 	}
