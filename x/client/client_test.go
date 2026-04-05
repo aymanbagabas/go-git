@@ -2,18 +2,24 @@ package client
 
 import (
 	"context"
+	"net"
+	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/go-git/go-git/v6/x/transport"
+	xhttp "github.com/go-git/go-git/v6/x/transport/http"
+	xssh "github.com/go-git/go-git/v6/x/transport/ssh"
 )
 
 func TestNew_BuiltinSchemes(t *testing.T) {
 	t.Parallel()
 
-	c := New(Options{})
+	c := New()
 	defer c.Close()
 
 	for _, scheme := range []string{"file", "git", "http", "https", "ssh"} {
@@ -26,7 +32,7 @@ func TestNew_BuiltinSchemes(t *testing.T) {
 func TestNew_ConnectableSchemes(t *testing.T) {
 	t.Parallel()
 
-	c := New(Options{})
+	c := New()
 	defer c.Close()
 
 	for _, scheme := range []string{"file", "git", "ssh"} {
@@ -40,7 +46,7 @@ func TestNew_ConnectableSchemes(t *testing.T) {
 func TestNew_HTTPNotConnectable(t *testing.T) {
 	t.Parallel()
 
-	c := New(Options{})
+	c := New()
 	defer c.Close()
 
 	for _, scheme := range []string{"http", "https"} {
@@ -54,7 +60,7 @@ func TestNew_HTTPNotConnectable(t *testing.T) {
 func TestNew_UnsupportedScheme(t *testing.T) {
 	t.Parallel()
 
-	c := New(Options{})
+	c := New()
 	defer c.Close()
 
 	_, err := c.Transport("ftp")
@@ -62,24 +68,160 @@ func TestNew_UnsupportedScheme(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported scheme")
 }
 
-func TestRegisterTransport(t *testing.T) {
+func TestWithTransport(t *testing.T) {
 	t.Parallel()
 
-	c := New(Options{})
+	custom := &mockTransport{}
+	c := New(WithTransport("custom", custom))
 	defer c.Close()
 
+	tr, err := c.Transport("custom")
+	require.NoError(t, err)
+	assert.Equal(t, custom, tr)
+}
+
+func TestWithTransport_OverrideBuiltin(t *testing.T) {
+	t.Parallel()
+
 	custom := &mockTransport{}
-	c.RegisterTransport("custom", custom)
+	c := New(WithTransport("ssh", custom))
+	defer c.Close()
+
+	tr, err := c.Transport("ssh")
+	require.NoError(t, err)
+	assert.Equal(t, custom, tr)
+}
+
+func TestWithSSHAuth(t *testing.T) {
+	t.Parallel()
+
+	auth := &xssh.Password{
+		User:     "git",
+		Password: "secret",
+		HostKeyCallbackHelper: xssh.HostKeyCallbackHelper{
+			HostKeyCallback: gossh.InsecureIgnoreHostKey(),
+		},
+	}
+
+	c := New(WithSSHAuth(auth))
+	defer c.Close()
+
+	tr, err := c.Transport("ssh")
+	require.NoError(t, err)
+	assert.NotNil(t, tr)
+}
+
+func TestWithHTTPAuth(t *testing.T) {
+	t.Parallel()
+
+	auth := &xhttp.BasicAuth{Username: "user", Password: "pass"}
+
+	c := New(WithHTTPAuth(auth))
+	defer c.Close()
+
+	tr, err := c.Transport("http")
+	require.NoError(t, err)
+	assert.NotNil(t, tr)
+}
+
+func TestWithHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	custom := &http.Client{}
+	c := New(WithHTTPClient(custom))
+	defer c.Close()
+
+	tr, err := c.Transport("https")
+	require.NoError(t, err)
+	assert.NotNil(t, tr)
+}
+
+func TestWithProxyURL(t *testing.T) {
+	t.Parallel()
+
+	proxyURL, err := url.Parse("socks5://proxy.example:1080")
+	require.NoError(t, err)
+
+	c := New(WithProxyURL(proxyURL))
+	defer c.Close()
+
+	for _, scheme := range []string{"ssh", "git", "http", "https"} {
+		tr, err := c.Transport(scheme)
+		require.NoError(t, err, "scheme %q", scheme)
+		assert.NotNil(t, tr, "scheme %q", scheme)
+	}
+}
+
+func TestWithProxyEnvironment(t *testing.T) {
+	t.Parallel()
+
+	c := New(WithProxyEnvironment())
+	defer c.Close()
+
+	for _, scheme := range []string{"ssh", "git", "http", "https"} {
+		tr, err := c.Transport(scheme)
+		require.NoError(t, err, "scheme %q", scheme)
+		assert.NotNil(t, tr, "scheme %q", scheme)
+	}
+}
+
+func TestWithDialer(t *testing.T) {
+	t.Parallel()
+
+	c := New(WithDialer((&net.Dialer{}).DialContext))
+	defer c.Close()
+
+	for _, scheme := range []string{"ssh", "git"} {
+		tr, err := c.Transport(scheme)
+		require.NoError(t, err, "scheme %q", scheme)
+		assert.NotNil(t, tr, "scheme %q", scheme)
+	}
+}
+
+func TestWithLoader(t *testing.T) {
+	t.Parallel()
+
+	loader := transport.MapLoader{}
+	c := New(WithLoader(loader))
+	defer c.Close()
+
+	tr, err := c.Transport("file")
+	require.NoError(t, err)
+	assert.NotNil(t, tr)
+}
+
+func TestMultipleOptions(t *testing.T) {
+	t.Parallel()
+
+	auth := &xhttp.BasicAuth{Username: "u", Password: "p"}
+	custom := &mockTransport{}
+
+	c := New(
+		WithHTTPAuth(auth),
+		WithTransport("custom", custom),
+	)
+	defer c.Close()
 
 	tr, err := c.Transport("custom")
 	require.NoError(t, err)
 	assert.Equal(t, custom, tr)
 
-	// Override builtin
-	c.RegisterTransport("ssh", custom)
-	tr, err = c.Transport("ssh")
+	tr, err = c.Transport("http")
 	require.NoError(t, err)
-	assert.Equal(t, custom, tr)
+	assert.NotNil(t, tr)
+}
+
+func TestNilRequest(t *testing.T) {
+	t.Parallel()
+
+	c := New()
+	defer c.Close()
+
+	_, err := c.Handshake(context.Background(), nil)
+	require.Error(t, err)
+
+	_, err = c.Connect(context.Background(), nil)
+	require.Error(t, err)
 }
 
 type mockTransport struct{}
