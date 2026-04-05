@@ -61,11 +61,15 @@ func handlerSSH(s ssh.Session) {
 		return
 	}
 
+	go func() {
+		defer stdin.Close()
+		io.Copy(stdin, s)
+	}()
+
 	var wg sync.WaitGroup
-	wg.Add(3)
-	go func() { defer wg.Done(); _, _ = io.Copy(s, stdout) }()
-	go func() { defer wg.Done(); _, _ = io.Copy(stdin, s); _ = stdin.Close() }()
-	go func() { defer wg.Done(); _, _ = io.Copy(s.Stderr(), stderr) }()
+	wg.Add(2)
+	go func() { defer wg.Done(); io.Copy(s.Stderr(), stderr) }()
+	go func() { defer wg.Done(); io.Copy(s, stdout) }()
 	wg.Wait()
 
 	if err := cmd.Wait(); err != nil {
