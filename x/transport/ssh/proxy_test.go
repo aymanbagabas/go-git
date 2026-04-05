@@ -128,28 +128,15 @@ func (r *testProxyRule) Allow(_ context.Context, _ *socks5.Request) (context.Con
 
 func socksDialProxy(proxyURL *url.URL) func(transport.DialContextFunc) transport.DialContextFunc {
 	return func(direct transport.DialContextFunc) transport.DialContextFunc {
-		return func(ctx context.Context, network, addr string) (net.Conn, error) {
-			forward := &dialerAdapter{fn: direct}
-			dialer, err := proxy.FromURL(proxyURL, forward)
-			if err != nil {
-				return nil, err
-			}
-			if cd, ok := dialer.(proxy.ContextDialer); ok {
-				return cd.DialContext(ctx, network, addr)
-			}
+		dialer, err := proxy.FromURL(proxyURL, direct)
+		if err != nil {
+			return direct
+		}
+		if cd, ok := dialer.(proxy.ContextDialer); ok {
+			return cd.DialContext
+		}
+		return func(_ context.Context, network, addr string) (net.Conn, error) {
 			return dialer.Dial(network, addr)
 		}
 	}
-}
-
-type dialerAdapter struct {
-	fn transport.DialContextFunc
-}
-
-func (d *dialerAdapter) Dial(network, addr string) (net.Conn, error) {
-	return d.fn(context.Background(), network, addr)
-}
-
-func (d *dialerAdapter) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	return d.fn(ctx, network, addr)
 }

@@ -236,8 +236,7 @@ func (c *Client) builtin(scheme string) (transport.Transport, error) {
 // a proxy.Dialer given a forwarding proxy.Dialer.
 func proxyDialer(makeDialer func(proxy.Dialer) (proxy.Dialer, error)) func(transport.DialContextFunc) transport.DialContextFunc {
 	return func(direct transport.DialContextFunc) transport.DialContextFunc {
-		forward := &dialerAdapter{fn: direct}
-		d, err := makeDialer(forward)
+		d, err := makeDialer(direct)
 		if err != nil {
 			return direct
 		}
@@ -248,18 +247,4 @@ func proxyDialer(makeDialer func(proxy.Dialer) (proxy.Dialer, error)) func(trans
 			return d.Dial(network, addr)
 		}
 	}
-}
-
-// dialerAdapter adapts a transport.DialContextFunc to the proxy.Dialer
-// and proxy.ContextDialer interfaces.
-type dialerAdapter struct {
-	fn transport.DialContextFunc
-}
-
-func (d *dialerAdapter) Dial(network, addr string) (net.Conn, error) {
-	return d.fn(context.Background(), network, addr)
-}
-
-func (d *dialerAdapter) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	return d.fn(ctx, network, addr)
 }

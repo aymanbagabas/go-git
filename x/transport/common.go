@@ -11,7 +11,19 @@ import (
 )
 
 // DialContextFunc is the function signature for dialing network connections.
+// It also implements proxy.Dialer and proxy.ContextDialer so it can be
+// passed directly to proxy.FromURL without an adapter.
 type DialContextFunc func(ctx context.Context, network, address string) (net.Conn, error)
+
+// Dial implements proxy.Dialer.
+func (f DialContextFunc) Dial(network, addr string) (net.Conn, error) {
+	return f(context.Background(), network, addr)
+}
+
+// DialContext implements proxy.ContextDialer.
+func (f DialContextFunc) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	return f(ctx, network, addr)
+}
 
 // RemoteError represents an error returned by the remote.
 // TODO: embed error
