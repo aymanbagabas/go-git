@@ -17,13 +17,3 @@ func GitProtocolEnv(v protocol.Version) string {
 		return fmt.Sprintf("version=%s", v)
 	}
 }
-
-// GitProtocolExtraParams returns the extra parameters for the git:// protocol
-// request corresponding to the given protocol version. Returns nil for
-// protocol V0.
-func GitProtocolExtraParams(v protocol.Version) []string {
-	if s := GitProtocolEnv(v); s != "" {
-		return []string{s}
-	}
-	return nil
-}
