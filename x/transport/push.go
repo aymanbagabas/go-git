@@ -13,7 +13,7 @@ import (
 )
 
 // sendPack sends a packfile to a remote server.
-func sendPack(
+func SendPack(
 	ctx context.Context,
 	caps *capability.List,
 	writer io.WriteCloser,

@@ -2,17 +2,21 @@
 package ssh
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/kevinburke/ssh_config"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/net/proxy"
 
+	"github.com/go-git/go-git/v6/utils/ioutil"
 	transport "github.com/go-git/go-git/v6/x/transport"
 )
 
@@ -53,15 +57,18 @@ func NewTransport(opts Options) *Transport {
 }
 
 func (t *Transport) Open(ctx context.Context, req *transport.Request) (transport.Session, error) {
-	rwc, err := t.Connect(ctx, req)
+	conn, err := t.connect(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	conn := rwc.(*sshConn)
-	return transport.NewStreamSession(conn.Reader, conn.WriteCloser, conn.Close), nil
+	return transport.NewStreamSession(conn.stdout, conn.stdin, conn.Close), nil
 }
 
 func (t *Transport) Connect(ctx context.Context, req *transport.Request) (io.ReadWriteCloser, error) {
+	return t.connect(ctx, req)
+}
+
+func (t *Transport) connect(ctx context.Context, req *transport.Request) (*sshConn, error) {
 	config, err := t.resolveConfig(ctx, req)
 	if err != nil {
 		return nil, err
@@ -85,7 +92,6 @@ func (t *Transport) Connect(ctx context.Context, req *transport.Request) (io.Rea
 		_ = session.Setenv("GIT_PROTOCOL", gitProtocol)
 	}
 
-	cmd := buildCommand(req)
 	stdinPipe, err := session.StdinPipe()
 	if err != nil {
 		_ = session.Close()
@@ -100,18 +106,36 @@ func (t *Transport) Connect(ctx context.Context, req *transport.Request) (io.Rea
 		return nil, err
 	}
 
+	stderrPipe, err := session.StderrPipe()
+	if err != nil {
+		_ = session.Close()
+		_ = client.Close()
+		return nil, err
+	}
+
+	conn := &sshConn{
+		stdout:  stdoutPipe,
+		stdin:   stdinPipe,
+		session: session,
+		client:  client,
+	}
+
+	// Read stderr in background — surface as RemoteError on Close or
+	// when the caller encounters an error reading stdout.
+	go func() {
+		var buf bytes.Buffer
+		_, _ = ioutil.CopyBufferPool(&buf, stderrPipe)
+		conn.stderrBuf.Store(&buf)
+	}()
+
+	cmd := buildCommand(req)
 	if err := session.Start(cmd); err != nil {
 		_ = session.Close()
 		_ = client.Close()
 		return nil, err
 	}
 
-	return &sshConn{
-		Reader:      stdoutPipe,
-		WriteCloser: stdinPipe,
-		session:     session,
-		client:      client,
-	}, nil
+	return conn, nil
 }
 
 func (t *Transport) resolveConfig(ctx context.Context, req *transport.Request) (*gossh.ClientConfig, error) {
@@ -173,15 +197,53 @@ func resolveHostWithPort(req *transport.Request) string {
 }
 
 type sshConn struct {
-	io.Reader
-	io.WriteCloser
-	session *gossh.Session
-	client  *gossh.Client
+	stdout    io.Reader
+	stdin     io.WriteCloser
+	session   *gossh.Session
+	client    *gossh.Client
+	stderrBuf atomic.Pointer[bytes.Buffer]
+}
+
+func (c *sshConn) Read(p []byte) (int, error) {
+	n, err := c.stdout.Read(p)
+	if err != nil {
+		// If stdout read fails, check stderr for a more useful error.
+		if stderrErr := c.stderr(); stderrErr != nil {
+			return n, stderrErr
+		}
+	}
+	return n, err
+}
+
+func (c *sshConn) Write(p []byte) (int, error) {
+	return c.stdin.Write(p)
 }
 
 func (c *sshConn) Close() error {
+	_ = c.stdin.Close()
 	_ = c.session.Close()
-	return c.client.Close()
+	err := c.client.Close()
+	if errors.Is(err, net.ErrClosed) {
+		err = nil
+	}
+	// If there was stderr output, surface it as the error.
+	if stderrErr := c.stderr(); stderrErr != nil {
+		return stderrErr
+	}
+	return err
+}
+
+// stderr returns stderr content as a RemoteError if non-empty.
+func (c *sshConn) stderr() error {
+	buf := c.stderrBuf.Load()
+	if buf == nil {
+		return nil
+	}
+	s := strings.TrimSpace(buf.String())
+	if s == "" {
+		return nil
+	}
+	return transport.NewRemoteError(s)
 }
 
 func buildCommand(req *transport.Request) string {

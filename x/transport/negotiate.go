@@ -18,7 +18,7 @@ import (
 )
 
 // negotiatePack performs the pack negotiation phase of the fetch operation.
-func negotiatePack(
+func NegotiatePack(
 	ctx context.Context,
 	st storage.Storer,
 	caps *capability.List,

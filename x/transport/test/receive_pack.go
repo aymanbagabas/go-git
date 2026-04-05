@@ -31,7 +31,7 @@ type ReceivePackSuite struct {
 	Storer              storage.Storer
 	EmptyStorer         storage.Storer
 	NonExistentStorer   storage.Storer
-	Transport           transport.Transport
+	PackTransport       transport.PackTransport
 }
 
 // TearDownTest closes all storers.
@@ -43,14 +43,14 @@ func (s *ReceivePackSuite) TearDownTest() {
 	}
 }
 
-func (s *ReceivePackSuite) packClient() *transport.PackTransport {
-	return transport.NewPackTransport(s.Transport)
+func (s *ReceivePackSuite) packClient() transport.PackTransport {
+	return s.PackTransport
 }
 
 // TestAdvertisedReferencesEmpty tests advertised references on an empty repo.
 func (s *ReceivePackSuite) TestAdvertisedReferencesEmpty() {
 	pc := s.packClient()
-	conn, err := pc.Handshake(context.TODO(), s.EmptyEndpoint, transport.ReceivePackService)
+	conn, err := pc.Handshake(context.TODO(), &transport.Request{URL: s.EmptyEndpoint, Command: transport.ReceivePackService})
 	s.Require().NoError(err)
 	defer func() { s.Require().NoError(conn.Close()) }()
 
@@ -62,14 +62,14 @@ func (s *ReceivePackSuite) TestAdvertisedReferencesEmpty() {
 // TestAdvertisedReferencesNotExists tests advertised references on a non-existent repo.
 func (s *ReceivePackSuite) TestAdvertisedReferencesNotExists() {
 	pc := s.packClient()
-	_, err := pc.Handshake(context.TODO(), s.NonExistentEndpoint, transport.ReceivePackService)
+	_, err := pc.Handshake(context.TODO(), &transport.Request{URL: s.NonExistentEndpoint, Command: transport.ReceivePackService})
 	s.Require().Error(err)
 }
 
 // TestCallAdvertisedReferenceTwice tests that calling advertised references twice returns the same result.
 func (s *ReceivePackSuite) TestCallAdvertisedReferenceTwice() {
 	pc := s.packClient()
-	conn, err := pc.Handshake(context.TODO(), s.Endpoint, transport.ReceivePackService)
+	conn, err := pc.Handshake(context.TODO(), &transport.Request{URL: s.Endpoint, Command: transport.ReceivePackService})
 	s.Require().NoError(err)
 	defer func() { s.Require().NoError(conn.Close()) }()
 
@@ -85,7 +85,7 @@ func (s *ReceivePackSuite) TestCallAdvertisedReferenceTwice() {
 // TestDefaultBranch tests that the default branch is correctly advertised.
 func (s *ReceivePackSuite) TestDefaultBranch() {
 	pc := s.packClient()
-	conn, err := pc.Handshake(context.TODO(), s.Endpoint, transport.ReceivePackService)
+	conn, err := pc.Handshake(context.TODO(), &transport.Request{URL: s.Endpoint, Command: transport.ReceivePackService})
 	s.Require().NoError(err)
 	defer func() { s.Require().NoError(conn.Close()) }()
 
@@ -107,7 +107,7 @@ func (s *ReceivePackSuite) TestDefaultBranch() {
 // TestCapabilities tests that capabilities are correctly reported.
 func (s *ReceivePackSuite) TestCapabilities() {
 	pc := s.packClient()
-	conn, err := pc.Handshake(context.TODO(), s.Endpoint, transport.ReceivePackService)
+	conn, err := pc.Handshake(context.TODO(), &transport.Request{URL: s.Endpoint, Command: transport.ReceivePackService})
 	s.Require().NoError(err)
 	defer func() { s.Require().NoError(conn.Close()) }()
 	s.Require().Len(conn.Capabilities().Get("agent"), 1)
@@ -137,7 +137,7 @@ func (s *ReceivePackSuite) TestSendPackWithContext() {
 	}
 
 	pc := s.packClient()
-	conn, err := pc.Handshake(context.TODO(), s.EmptyEndpoint, transport.ReceivePackService)
+	conn, err := pc.Handshake(context.TODO(), &transport.Request{URL: s.EmptyEndpoint, Command: transport.ReceivePackService})
 	s.Require().NoError(err)
 	defer func() { s.Require().NoError(conn.Close()) }()
 
@@ -256,7 +256,7 @@ func (s *ReceivePackSuite) receivePackNoCheck(ep *url.URL,
 	}
 
 	pc := s.packClient()
-	conn, err := pc.Handshake(ctx, ep, transport.ReceivePackService)
+	conn, err := pc.Handshake(ctx, &transport.Request{URL: ep, Command: transport.ReceivePackService})
 	s.Require().NoError(err, comment)
 	defer func() { s.Require().NoError(conn.Close()) }()
 
@@ -313,7 +313,7 @@ func (s *ReceivePackSuite) checkRemoteReference(ep *url.URL,
 	s.T().Helper()
 	ctx := context.TODO()
 	pc := s.packClient()
-	conn, err := pc.Handshake(ctx, ep, transport.ReceivePackService)
+	conn, err := pc.Handshake(ctx, &transport.Request{URL: ep, Command: transport.ReceivePackService})
 	s.Require().NoError(err)
 	ar, err := conn.GetRemoteRefs(ctx)
 	s.Require().NoError(err, fmt.Sprintf("endpoint: %s", ep.String()))
@@ -345,7 +345,7 @@ func (s *ReceivePackSuite) testSendPackAddReference() {
 	s.T().Helper()
 	ctx := context.TODO()
 	pc := s.packClient()
-	conn, err := pc.Handshake(ctx, s.Endpoint, transport.ReceivePackService)
+	conn, err := pc.Handshake(ctx, &transport.Request{URL: s.Endpoint, Command: transport.ReceivePackService})
 	s.Require().NoError(err)
 
 	refs, err := conn.GetRemoteRefs(ctx)
@@ -367,7 +367,7 @@ func (s *ReceivePackSuite) testSendPackDeleteReference() {
 	s.T().Helper()
 	ctx := context.TODO()
 	pc := s.packClient()
-	conn, err := pc.Handshake(ctx, s.Endpoint, transport.ReceivePackService)
+	conn, err := pc.Handshake(ctx, &transport.Request{URL: s.Endpoint, Command: transport.ReceivePackService})
 	s.Require().NoError(err)
 
 	caps := conn.Capabilities()

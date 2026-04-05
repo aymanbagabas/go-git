@@ -13,7 +13,7 @@ import (
 )
 
 // fetchPack fetches a packfile from the remote into the given storage.
-func fetchPack(
+func FetchPack(
 	ctx context.Context,
 	st storage.Storer,
 	caps *capability.List,

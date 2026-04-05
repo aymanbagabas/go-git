@@ -42,5 +42,5 @@ func (s *uploadPackSuite) SetupTest() {
 	s.EmptyStorer = filesystem.NewStorage(emptyFS, nil)
 	s.NonExistentStorer = memory.NewStorage()
 
-	s.Transport = NewTransport(Options{})
+	s.PackTransport = NewTransport(Options{})
 }
