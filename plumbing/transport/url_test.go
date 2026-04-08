@@ -13,7 +13,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp/capability"
 )
 
-func TestNewEndpoint(t *testing.T) {
+func TestParseURL(t *testing.T) {
 	t.Parallel()
 	type tt struct {
 		input   string
@@ -83,7 +83,7 @@ func TestNewEndpoint(t *testing.T) {
 		t.Run(tc.input, func(t *testing.T) {
 			t.Parallel()
 
-			ep, err := NewEndpoint(tc.input)
+			ep, err := ParseURL(tc.input)
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
 			} else {
@@ -94,7 +94,7 @@ func TestNewEndpoint(t *testing.T) {
 	}
 }
 
-func TestNewEndpointFile(t *testing.T) {
+func TestParseURLFile(t *testing.T) {
 	t.Parallel()
 	type tt struct {
 		input   string
@@ -155,7 +155,7 @@ func TestNewEndpointFile(t *testing.T) {
 		t.Run(tc.input, func(t *testing.T) {
 			t.Parallel()
 
-			ep, err := NewEndpoint(tc.input)
+			ep, err := ParseURL(tc.input)
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
 			} else {
@@ -175,8 +175,8 @@ func TestFilterUnsupportedCapabilities(t *testing.T) {
 	assert.False(t, l.Supports(capability.ThinPack))
 }
 
-func FuzzNewEndpoint(f *testing.F) {
+func FuzzParseURL(f *testing.F) {
 	f.Fuzz(func(_ *testing.T, input string) {
-		NewEndpoint(input)
+		ParseURL(input)
 	})
 }
