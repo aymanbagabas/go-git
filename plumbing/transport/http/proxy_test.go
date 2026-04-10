@@ -8,17 +8,15 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 
 	fixtures "github.com/go-git/go-git-fixtures/v6"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-
-	"net/url"
 
 	"github.com/go-git/go-git/v6/internal/transport/test"
 	transport "github.com/go-git/go-git/v6/plumbing/transport"
@@ -209,12 +207,10 @@ func (p *testProxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		_, _ = io.Copy(targetConn, clientConn)
 		targetConn.Close()
-	}()
+	})
 
 	_, _ = io.Copy(clientConn, targetConn)
 	clientConn.Close()

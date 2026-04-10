@@ -1,10 +1,8 @@
-package git
+package file
 
 import (
-	"fmt"
 	"net/url"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	fixtures "github.com/go-git/go-git-fixtures/v6"
@@ -17,27 +15,32 @@ import (
 	"github.com/go-git/go-git/v6/storage/memory"
 )
 
-type gitPackEnv struct {
+type filePackEnv struct {
 	Endpoint, EmptyEndpoint, NonExistentEndpoint *url.URL
 	Storer, EmptyStorer, NonExistentStorer       storage.Storer
 	Transport                                    transport.Transport
 }
 
-func setupGitPackEnv(t testing.TB) gitPackEnv {
+func setupFilePackEnv(t testing.TB) filePackEnv {
 	t.Helper()
-	port := freePort(t.(*testing.T))
-	base := filepath.Join(t.TempDir(), fmt.Sprintf("git-proto-%d", port))
+	base := t.TempDir()
 
 	basicFS := test.PrepareRepository(t, fixtures.Basic().One(), base, "basic.git")
 	emptyFS := test.PrepareRepository(t, fixtures.ByTag("empty").One(), base, "empty.git")
 
-	startDaemon(t.(*testing.T), base, port)
+	basicPath, err := filepath.Abs(basicFS.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyPath, err := filepath.Abs(emptyFS.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	host := fmt.Sprintf("localhost:%d", port)
-	return gitPackEnv{
-		Endpoint:            &url.URL{Scheme: "git", Host: host, Path: "/basic.git"},
-		EmptyEndpoint:       &url.URL{Scheme: "git", Host: host, Path: "/empty.git"},
-		NonExistentEndpoint: &url.URL{Scheme: "git", Host: host, Path: "/non-existent.git"},
+	return filePackEnv{
+		Endpoint:            &url.URL{Scheme: "file", Path: basicPath},
+		EmptyEndpoint:       &url.URL{Scheme: "file", Path: emptyPath},
+		NonExistentEndpoint: &url.URL{Scheme: "file", Path: "/nonexistent/repo.git"},
 		Storer:              filesystem.NewStorage(basicFS, nil),
 		EmptyStorer:         filesystem.NewStorage(emptyFS, nil),
 		NonExistentStorer:   memory.NewStorage(),
@@ -47,9 +50,6 @@ func setupGitPackEnv(t testing.TB) gitPackEnv {
 
 func TestUploadPackSuite(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip(windowsSkipMsg)
-	}
 	suite.Run(t, new(uploadPackSuite))
 }
 
@@ -58,7 +58,7 @@ type uploadPackSuite struct {
 }
 
 func (s *uploadPackSuite) SetupTest() {
-	env := setupGitPackEnv(s.T())
+	env := setupFilePackEnv(s.T())
 	s.Endpoint = env.Endpoint
 	s.EmptyEndpoint = env.EmptyEndpoint
 	s.NonExistentEndpoint = env.NonExistentEndpoint
@@ -70,9 +70,6 @@ func (s *uploadPackSuite) SetupTest() {
 
 func TestReceivePackSuite(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip(windowsSkipMsg)
-	}
 	suite.Run(t, new(receivePackSuite))
 }
 
@@ -81,7 +78,7 @@ type receivePackSuite struct {
 }
 
 func (s *receivePackSuite) SetupTest() {
-	env := setupGitPackEnv(s.T())
+	env := setupFilePackEnv(s.T())
 	s.Endpoint = env.Endpoint
 	s.EmptyEndpoint = env.EmptyEndpoint
 	s.NonExistentEndpoint = env.NonExistentEndpoint
