@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/utils/ioutil"
+	"github.com/go-git/go-git/v6/utils/trace"
 )
 
 // DefaultPort is the default port for the SSH protocol.
@@ -40,9 +41,9 @@ type Options struct {
 	// If nil, connections are made directly.
 	DialProxy func(transport.DialContextFunc) transport.DialContextFunc
 
-	// UserSettings reads SSH configuration (Hostname, Port overrides
-	// from ~/.ssh/config). If nil, ssh_config.DefaultUserSettings is used.
-	UserSettings *ssh_config.UserSettings
+	// UserSettings provides an SSH configuration (Hostname, Port overrides
+	// from ~/.ssh/config). If nil, [ssh_config.DefaultUserSettings] is used.
+	UserSettings func(context.Context, *transport.Request) (*ssh_config.UserSettings, error)
 }
 
 // Transport implements the ssh:// transport protocol.
@@ -55,7 +56,7 @@ func NewTransport(opts Options) *Transport {
 	return &Transport{opts: opts}
 }
 
-// Connect implements transport.Connectable.
+// Connect implements transport.Connector.
 func (t *Transport) Connect(ctx context.Context, req *transport.Request) (transport.Conn, error) {
 	conn, err := t.connect(ctx, req)
 	if err != nil {
@@ -70,7 +71,10 @@ func (t *Transport) connect(ctx context.Context, req *transport.Request) (*sshCo
 		return nil, err
 	}
 
-	hostWithPort := t.resolveHostWithPort(req)
+	hostWithPort, err := t.resolveHostWithPort(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 
 	if config.HostKeyCallback == nil {
 		db, err := newKnownHostsDb()
@@ -86,6 +90,8 @@ func (t *Transport) connect(ctx context.Context, req *transport.Request) (*sshCo
 		}
 		config.HostKeyAlgorithms = db.HostKeyAlgorithms(hostWithPort)
 	}
+
+	trace.SSH.Printf("ssh: host key algorithms %s", strings.Join(config.HostKeyAlgorithms, ", "))
 
 	client, err := t.dial(ctx, "tcp", hostWithPort, config)
 	if err != nil {
@@ -159,6 +165,8 @@ func (t *Transport) resolveConfig(ctx context.Context, req *transport.Request) (
 		}
 	}
 
+	trace.SSH.Printf("ssh: Using default auth builder (user: %s)", username)
+
 	auth, err := NewSSHAgentAuth(username)
 	if err != nil {
 		return nil, err
@@ -184,6 +192,7 @@ func (t *Transport) dial(ctx context.Context, network, addr string, config *goss
 		if dialFn == nil {
 			dialFn = (&net.Dialer{}).DialContext
 		}
+		trace.SSH.Printf("ssh: using proxyURL for connection")
 		conn, err = t.opts.DialProxy(dialFn)(ctx, network, addr)
 	case t.opts.DialContext != nil:
 		conn, err = t.opts.DialContext(ctx, network, addr)
@@ -201,18 +210,21 @@ func (t *Transport) dial(ctx context.Context, network, addr string, config *goss
 	return gossh.NewClient(c, chans, reqs), nil
 }
 
-func (t *Transport) userSettings() *ssh_config.UserSettings {
+func (t *Transport) userSettings(ctx context.Context, req *transport.Request) (*ssh_config.UserSettings, error) {
 	if t.opts.UserSettings != nil {
-		return t.opts.UserSettings
+		return t.opts.UserSettings(ctx, req)
 	}
-	return ssh_config.DefaultUserSettings
+	return ssh_config.DefaultUserSettings, nil
 }
 
-func (t *Transport) resolveHostWithPort(req *transport.Request) string {
+func (t *Transport) resolveHostWithPort(ctx context.Context, req *transport.Request) (string, error) {
 	hostname := req.URL.Hostname()
 	port := req.URL.Port()
 
-	cfg := t.userSettings()
+	cfg, err := t.userSettings(ctx, req)
+	if err != nil {
+		return "", err
+	}
 	if configHost := cfg.Get(hostname, "Hostname"); configHost != "" {
 		hostname = configHost
 	}
@@ -228,7 +240,7 @@ func (t *Transport) resolveHostWithPort(req *transport.Request) string {
 		port = strconv.Itoa(DefaultPort)
 	}
 
-	return net.JoinHostPort(hostname, port)
+	return net.JoinHostPort(hostname, port), nil
 }
 
 type sshConn struct {

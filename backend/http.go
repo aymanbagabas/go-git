@@ -92,6 +92,10 @@ func (b *Backend) handleServiceRPC(w http.ResponseWriter, r *http.Request, repo,
 		return
 	}
 
+	if !b.requireReceivePackAuth(w, r, svc) {
+		return
+	}
+
 	frw := &flushResponseWriter{ResponseWriter: w, log: b.ErrorLog, chunkSize: defaultChunkSize}
 	if err := b.Serve(r.Context(), reader, frw, &Request{
 		URL:          ep,
@@ -110,6 +114,16 @@ func (b *Backend) handleInfoRefs(w http.ResponseWriter, r *http.Request, repo, f
 	if service == "" {
 		hdrNocache(w)
 		b.handleDumbSendFile(w, r, repo, file, "text/plain; charset=utf-8")
+		return
+	}
+
+	if service != transport.UploadPackService && service != transport.ReceivePackService {
+		b.logf("unsupported service requested: %q", service)
+		renderStatusError(w, http.StatusNotFound)
+		return
+	}
+
+	if !b.requireReceivePackAuth(w, r, service) {
 		return
 	}
 
@@ -215,6 +229,16 @@ func (b *Backend) handleDumbSendFile(w http.ResponseWriter, _ *http.Request, rep
 		renderStatusError(w, http.StatusInternalServerError)
 		return
 	}
+}
+
+func (b *Backend) requireReceivePackAuth(w http.ResponseWriter, r *http.Request, service string) bool {
+	// For receive-pack, require authentication as a basic sanity check.
+	if service == transport.ReceivePackService && strings.TrimSpace(r.Header.Get("Authorization")) == "" {
+		b.logf("missing Authorization header for receive-pack service")
+		renderStatusError(w, http.StatusUnauthorized)
+		return false
+	}
+	return true
 }
 
 func renderStatusError(w http.ResponseWriter, code int) {

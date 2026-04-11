@@ -56,7 +56,7 @@ func (t *Transport) Handshake(ctx context.Context, req *transport.Request) (tran
 	}
 
 	client := t.resolveClient()
-	resp, err := client.Do(httpReq)
+	resp, err := doRequest(client, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("http transport: %w", err)
 	}
@@ -150,6 +150,8 @@ func handshakeDumb(resp *http.Response, req *transport.Request, client *http.Cli
 
 // --- smart HTTP pack session ---
 
+var _ transport.Session = (*smartPackSession)(nil)
+
 type smartPackSession struct {
 	client     *http.Client
 	baseURL    *url.URL
@@ -241,7 +243,7 @@ func (r *httpRequester) doPost() error {
 			return err
 		}
 	}
-	r.resp, err = r.session.client.Do(httpReq)
+	r.resp, err = doRequest(r.session.client, httpReq)
 	if err != nil {
 		return fmt.Errorf("http transport: %w", err)
 	}
@@ -253,6 +255,8 @@ func (r *httpRequester) doPost() error {
 }
 
 // --- dumb HTTP pack session ---
+
+var _ transport.Session = (*dumbPackSession)(nil)
 
 type dumbPackSession struct {
 	client     *http.Client

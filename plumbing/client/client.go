@@ -147,6 +147,9 @@ func WithLoader(l transport.Loader) Option {
 // This overrides any built-in transport for that scheme.
 func WithTransport(scheme string, tr transport.Transport) Option {
 	return func(o *options) {
+		if scheme == "" || tr == nil {
+			return
+		}
 		if o.schemes == nil {
 			o.schemes = make(map[string]transport.Transport)
 		}
@@ -182,15 +185,15 @@ func (c *Client) Handshake(ctx context.Context, req *transport.Request) (transpo
 
 // Connect resolves the transport for the request URL scheme and opens a
 // raw full-duplex connection. Returns ErrConnectUnsupported if the transport
-// does not implement Connectable (e.g. HTTP).
+// does not implement Connector (e.g. HTTP).
 func (c *Client) Connect(ctx context.Context, req *transport.Request) (transport.Conn, error) {
 	tr, err := c.resolve(req)
 	if err != nil {
 		return nil, err
 	}
-	conn, ok := tr.(transport.Connectable)
+	conn, ok := tr.(transport.Connector)
 	if !ok {
-		return nil, transport.ErrConnectUnsupported
+		return nil, fmt.Errorf("transport for %s does not support Connect: %w", req.URL.Scheme, transport.ErrConnectUnsupported)
 	}
 	return conn.Connect(ctx, req)
 }
