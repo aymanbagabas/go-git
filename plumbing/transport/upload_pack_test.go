@@ -68,8 +68,11 @@ func (s *UploadPackServeSuite) TestUploadPackAlwaysUseSidebandWhenAvailable() {
 		StatelessRPC:  true,
 	})
 
-	expected := "0008NAK\n0009\x01PACK"
-	s.Equal(expected, buf.String()[:len(expected)])
+	// Output should start with NAK and include pack data
+	// Progress messages may appear before pack data
+	output := buf.String()
+	s.True(strings.HasPrefix(output, "0008NAK\n"))
+	s.Contains(output, "\x01PACK")
 }
 
 func (s *UploadPackServeSuite) TestUploadPackSkipDeltaCompression() {

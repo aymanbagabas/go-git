@@ -28,7 +28,7 @@ func TestEncoderSuite(t *testing.T) {
 func (s *EncoderSuite) SetupTest() {
 	s.buf = bytes.NewBuffer(nil)
 	s.store = memory.NewStorage()
-	s.enc = NewEncoder(s.buf, s.store, false)
+	s.enc = NewEncoder(s.buf, s.store, false, nil)
 }
 
 func (s *EncoderSuite) TestCorrectPackHeader() {
@@ -96,32 +96,32 @@ func (s *EncoderSuite) TestHashNotFound() {
 }
 
 func (s *EncoderSuite) TestDecodeEncodeWithDeltaDecodeREF() {
-	s.enc = NewEncoder(s.buf, s.store, true)
+	s.enc = NewEncoder(s.buf, s.store, true, nil)
 	s.simpleDeltaTest()
 }
 
 func (s *EncoderSuite) TestDecodeEncodeWithDeltaDecodeOFS() {
-	s.enc = NewEncoder(s.buf, s.store, false)
+	s.enc = NewEncoder(s.buf, s.store, false, nil)
 	s.simpleDeltaTest()
 }
 
 func (s *EncoderSuite) TestDecodeEncodeWithDeltasDecodeREF() {
-	s.enc = NewEncoder(s.buf, s.store, true)
+	s.enc = NewEncoder(s.buf, s.store, true, nil)
 	s.deltaOverDeltaTest()
 }
 
 func (s *EncoderSuite) TestDecodeEncodeWithDeltasDecodeOFS() {
-	s.enc = NewEncoder(s.buf, s.store, false)
+	s.enc = NewEncoder(s.buf, s.store, false, nil)
 	s.deltaOverDeltaTest()
 }
 
 func (s *EncoderSuite) TestDecodeEncodeWithCycleREF() {
-	s.enc = NewEncoder(s.buf, s.store, true)
+	s.enc = NewEncoder(s.buf, s.store, true, nil)
 	s.deltaOverDeltaCyclicTest()
 }
 
 func (s *EncoderSuite) TestDecodeEncodeWithCycleOFS() {
-	s.enc = NewEncoder(s.buf, s.store, false)
+	s.enc = NewEncoder(s.buf, s.store, false, nil)
 	s.deltaOverDeltaCyclicTest()
 }
 

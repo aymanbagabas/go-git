@@ -20,6 +20,7 @@ func main() {
 	r, err := git.PlainClone(directory, &git.CloneOptions{
 		URL:               url,
 		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		Progress:          os.Stderr,
 	})
 
 	CheckIfError(err)

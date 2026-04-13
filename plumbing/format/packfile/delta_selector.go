@@ -1,10 +1,12 @@
 package packfile
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 
 	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/protocol/packp/sideband"
 	"github.com/go-git/go-git/v6/plumbing/storer"
 )
 
@@ -33,9 +35,15 @@ func newDeltaSelector(s storer.EncodedObjectStorer) *deltaSelector {
 // internal logic.  `packWindow` specifies the size of the sliding
 // window used to compare objects for delta compression; 0 turns off
 // delta compression entirely.
+// ObjectsToPack creates a list of ObjectToPack from the hashes
+// provided, creating deltas if it's suitable, using an specific
+// internal logic.  `packWindow` specifies the size of the sliding
+// window used to compare objects for delta compression; 0 turns off
+// delta compression entirely.
 func (dw *deltaSelector) ObjectsToPack(
 	hashes []plumbing.Hash,
 	packWindow uint,
+	progress sideband.Progress,
 ) ([]*ObjectToPack, error) {
 	otp, err := dw.objectsToPack(hashes, packWindow)
 	if err != nil {
@@ -61,21 +69,45 @@ func (dw *deltaSelector) ObjectsToPack(
 		}
 	}
 
+	// Report start of compression
+	if progress != nil {
+		_, _ = fmt.Fprintf(progress, "Compressing objects: 0%% (0/%d)\r", len(otp))
+	}
+
 	var wg sync.WaitGroup
 	var once sync.Once
+	progressMu := sync.Mutex{}
+	processedCount := 0
+	totalObjects := len(otp)
+
 	for _, objs := range objectGroups {
-		wg.Go(func() {
+		wg.Add(1)
+		go func(objs []*ObjectToPack) {
+			defer wg.Done()
 			if walkErr := dw.walk(objs, packWindow); walkErr != nil {
 				once.Do(func() {
 					err = walkErr
 				})
+				return
 			}
-		})
+			if progress != nil {
+				progressMu.Lock()
+				processedCount += len(objs)
+				pct := processedCount * 100 / totalObjects
+				_, _ = fmt.Fprintf(progress, "Compressing objects: %d%% (%d/%d)\r", pct, processedCount, totalObjects)
+				progressMu.Unlock()
+			}
+		}(objs)
 	}
 	wg.Wait()
 
 	if err != nil {
 		return nil, err
+	}
+
+	// Report completion
+	if progress != nil {
+		_, _ = fmt.Fprintf(progress, "Compressing objects: %d, done.\n", totalObjects)
 	}
 
 	return otp, nil

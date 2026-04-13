@@ -1389,7 +1389,7 @@ func pushHashes(
 	if !allDelete {
 		req.Packfile = rd
 		go func() {
-			e := packfile.NewEncoder(wr, s, useRefDeltas)
+			e := packfile.NewEncoder(wr, s, useRefDeltas, o.Progress)
 			if _, err := e.Encode(hs, config.Pack.Window); err != nil {
 				done <- wr.CloseWithError(err)
 				return
