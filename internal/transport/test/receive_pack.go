@@ -401,7 +401,7 @@ func (s *ReceivePackSuite) mustPackfile(fixture *fixtures.Fixture) io.ReadCloser
 func (s *ReceivePackSuite) emptyPackfile() io.ReadCloser {
 	s.T().Helper()
 	var buf bytes.Buffer
-	e := packfile.NewEncoder(&buf, memory.NewStorage(), false)
+	e := packfile.NewEncoder(&buf, memory.NewStorage(), false, nil)
 	_, err := e.Encode(nil, 10)
 	if err != nil {
 		panic(err)

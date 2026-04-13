@@ -55,6 +55,23 @@ func (m *Muxer) WriteChannel(t Channel, p []byte) (int, error) {
 	return wrote, nil
 }
 
+// ProgressWriter returns an [io.Writer] that writes to the ProgressMessage
+// channel. This is a convenience method for reporting progress messages.
+func (m *Muxer) ProgressWriter() io.Writer {
+	return m.channelWriter(ProgressMessage)
+}
+
+// ErrorWriter returns an [io.Writer] that writes to the ErrorMessage channel.
+// This is a convenience method for reporting error messages.
+func (m *Muxer) ErrorWriter() io.Writer {
+	return m.channelWriter(ErrorMessage)
+}
+
+// channelWriter returns a new io.Writer that writes to the given channel.
+func (m *Muxer) channelWriter(ch Channel) io.Writer {
+	return &channelWriter{m: m, ch: ch}
+}
+
 func (m *Muxer) doWrite(ch Channel, p []byte) (int, error) {
 	sz := min(len(p), m.max)
 

@@ -11,6 +11,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing"
 	cfgformat "github.com/go-git/go-git/v6/plumbing/format/config"
 	"github.com/go-git/go-git/v6/plumbing/hash"
+	"github.com/go-git/go-git/v6/plumbing/protocol/packp/sideband"
 	"github.com/go-git/go-git/v6/plumbing/storer"
 	"github.com/go-git/go-git/v6/utils/binary"
 	"github.com/go-git/go-git/v6/utils/ioutil"
@@ -25,12 +26,14 @@ type Encoder struct {
 	hasher   hash.Hash
 
 	useRefDeltas bool
+	progress     sideband.Progress // Original muxer for ObjectsToPack
 }
 
 // NewEncoder creates a new packfile encoder using a specific Writer and
 // EncodedObjectStorer. By default deltas used to generate the packfile will be
 // OFSDeltaObject. To use Reference deltas, set useRefDeltas to true.
-func NewEncoder(w io.Writer, s storer.EncodedObjectStorer, useRefDeltas bool) *Encoder {
+// If progress is not nil, it will be used to report progress messages.
+func NewEncoder(w io.Writer, s storer.EncodedObjectStorer, useRefDeltas bool, progress sideband.Progress) *Encoder {
 	var of cfgformat.ObjectFormat
 	if c, ok := s.(config.ConfigStorer); ok {
 		cfg, err := c.Config()
@@ -55,6 +58,7 @@ func NewEncoder(w io.Writer, s storer.EncodedObjectStorer, useRefDeltas bool) *E
 		zw:           zw,
 		hasher:       h,
 		useRefDeltas: useRefDeltas,
+		progress:     progress,
 	}
 }
 
@@ -66,10 +70,12 @@ func (e *Encoder) Encode(
 	hashes []plumbing.Hash,
 	packWindow uint,
 ) (plumbing.Hash, error) {
-	objects, err := e.selector.ObjectsToPack(hashes, packWindow)
+	objects, err := e.selector.ObjectsToPack(hashes, packWindow, e.progress)
 	if err != nil {
 		return plumbing.ZeroHash, err
 	}
+
+	_ = e.reportProgress("Counting objects", len(objects), len(objects))
 
 	return e.encode(objects)
 }
@@ -79,11 +85,27 @@ func (e *Encoder) encode(objects []*ObjectToPack) (plumbing.Hash, error) {
 		return plumbing.ZeroHash, err
 	}
 
-	for _, o := range objects {
+	// Report progress every 10% or every 100 objects, whichever is smaller
+	reportInterval := len(objects) / 10
+	if reportInterval == 0 {
+		reportInterval = 1
+	}
+	if reportInterval > 100 {
+		reportInterval = 100
+	}
+
+	_ = e.reportProgress("Writing objects", 0, len(objects))
+
+	for i, o := range objects {
 		if err := e.entry(o); err != nil {
 			return plumbing.ZeroHash, err
 		}
+		if (i+1)%reportInterval == 0 {
+			_ = e.reportProgress("Writing objects", i+1, len(objects))
+		}
 	}
+
+	_ = e.reportProgress("Writing objects", len(objects), len(objects))
 
 	return e.footer()
 }
@@ -219,6 +241,20 @@ func (e *Encoder) footer() (plumbing.Hash, error) {
 
 	_, err := h.WriteTo(e.w)
 	return h, err
+}
+
+// reportProgress reports encoding progress if the underlying writer supports it.
+func (e *Encoder) reportProgress(phase string, current, total int) error {
+	if e.progress == nil {
+		return nil
+	}
+	if current == total {
+		_, err := fmt.Fprintf(e.progress, "%s: %d, done.\n", phase, total)
+		return err
+	}
+	pct := current * 100 / total
+	_, err := fmt.Fprintf(e.progress, "%s: %d%% (%d/%d)\r", phase, pct, current, total)
+	return err
 }
 
 type offsetWriter struct {

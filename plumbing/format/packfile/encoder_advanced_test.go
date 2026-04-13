@@ -86,7 +86,7 @@ func (s *EncoderAdvancedSuite) testEncodeDecode(
 	hashes = auxHashes
 
 	buf := bytes.NewBuffer(nil)
-	enc := NewEncoder(buf, storage, false)
+	enc := NewEncoder(buf, storage, false, nil)
 	encodeHash, err := enc.Encode(hashes, packWindow)
 	s.NoError(err)
 

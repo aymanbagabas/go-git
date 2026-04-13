@@ -101,6 +101,9 @@ func UploadPack(
 	var multiAck, multiAckDetailed bool
 	var caps *capability.List
 	var wants []plumbing.Hash
+	var progress sideband.Progress
+	var writer io.Writer = w
+	var useSideband bool
 	firstRound := true
 	for !done {
 		writec := make(chan error)
@@ -113,12 +116,29 @@ func UploadPack(
 			wants = upreq.Wants
 			caps = upreq.Capabilities
 
+			// Create progress writer if sideband is supported and no-progress is not set
+			if caps.Supports(capability.Sideband64k) {
+				muxer := sideband.NewMuxer(sideband.Sideband64k, w)
+				writer = muxer
+				useSideband = true
+				if !caps.Supports(capability.NoProgress) {
+					progress = muxer.ProgressWriter()
+				}
+			} else if caps.Supports(capability.Sideband) {
+				muxer := sideband.NewMuxer(sideband.Sideband, w)
+				writer = muxer
+				useSideband = true
+				if !caps.Supports(capability.NoProgress) {
+					progress = muxer.ProgressWriter()
+				}
+			}
+
 			if err := r.Close(); err != nil {
 				return fmt.Errorf("closing reader: %w", err)
 			}
 
 			// Find common commits/objects
-			havesWithRef, err = revlist.ObjectsWithRef(st, wants, nil)
+			havesWithRef, err = revlist.ObjectsWithRefProgress(st, wants, nil, nil)
 			if err != nil {
 				return fmt.Errorf("getting objects with ref: %w", err)
 			}
@@ -253,22 +273,10 @@ func UploadPack(
 		return fmt.Errorf("closing reader: %w", err)
 	}
 
-	objs, err := objectsToUpload(st, wants, haves)
+	objs, err := revlist.ObjectsProgress(st, wants, haves, progress)
 	if err != nil {
 		_ = w.Close()
 		return fmt.Errorf("getting objects to upload: %w", err)
-	}
-
-	var (
-		useSideband bool
-		writer      io.Writer = w
-	)
-	if caps.Supports(capability.Sideband64k) {
-		writer = sideband.NewMuxer(sideband.Sideband64k, w)
-		useSideband = true
-	} else if caps.Supports(capability.Sideband) {
-		writer = sideband.NewMuxer(sideband.Sideband, w)
-		useSideband = true
 	}
 
 	// TODO: Support shallow-file
@@ -282,7 +290,7 @@ func UploadPack(
 		packWindow = config.DefaultPackWindow
 	}
 
-	e := packfile.NewEncoder(writer, st, false)
+	e := packfile.NewEncoder(writer, st, false, progress)
 	_, err = e.Encode(objs, packWindow)
 	if err != nil {
 		return fmt.Errorf("encoding packfile: %w", err)
@@ -299,10 +307,6 @@ func UploadPack(
 	}
 
 	return nil
-}
-
-func objectsToUpload(st storage.Storer, wants, haves []plumbing.Hash) ([]plumbing.Hash, error) {
-	return revlist.Objects(st, wants, haves)
 }
 
 func getShallowCommits(st storage.Storer, heads []plumbing.Hash, depth int, upd *packp.ShallowUpdate) error {

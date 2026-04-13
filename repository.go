@@ -2144,7 +2144,7 @@ func (r *Repository) createNewObjectPack(cfg *RepackConfig) (h plumbing.Hash, er
 	if err != nil {
 		return h, err
 	}
-	enc := packfile.NewEncoder(wc, r.Storer, cfg.UseRefDeltas)
+	enc := packfile.NewEncoder(wc, r.Storer, cfg.UseRefDeltas, nil)
 	h, err = enc.Encode(objs, scfg.Pack.Window)
 	if err != nil {
 		return h, err

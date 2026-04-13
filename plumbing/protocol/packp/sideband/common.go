@@ -1,5 +1,7 @@
 package sideband
 
+import "io"
+
 // Type sideband type "side-band" or "side-band-64k"
 type Type int8
 
@@ -31,3 +33,16 @@ const (
 	// ErrorMessage fatal error message just before stream aborts
 	ErrorMessage Channel = 3
 )
+
+// channelWriter is a writer that writes to a specific sideband channel.
+type channelWriter struct {
+	m  *Muxer
+	ch Channel
+}
+
+var _ io.Writer = (*channelWriter)(nil)
+
+// Write implements [io.Writer] for channelWriter.
+func (w *channelWriter) Write(p []byte) (int, error) {
+	return w.m.WriteChannel(w.ch, p)
+}
