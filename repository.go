@@ -16,15 +16,18 @@ import (
 	"github.com/go-git/go-billy/v6/osfs"
 
 	"github.com/go-git/go-git/v6/config"
+	"github.com/go-git/go-git/v6/internal/archive"
 	"github.com/go-git/go-git/v6/internal/pathutil"
 	"github.com/go-git/go-git/v6/internal/revision"
 	"github.com/go-git/go-git/v6/internal/url"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/cache"
+	"github.com/go-git/go-git/v6/plumbing/client"
 	formatcfg "github.com/go-git/go-git/v6/plumbing/format/config"
 	"github.com/go-git/go-git/v6/plumbing/format/packfile"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/plumbing/storer"
+	"github.com/go-git/go-git/v6/plumbing/protocol/packp/sideband"
 	"github.com/go-git/go-git/v6/plumbing/transport"
 	"github.com/go-git/go-git/v6/storage"
 	"github.com/go-git/go-git/v6/storage/filesystem"
@@ -1430,6 +1433,123 @@ func (r *Repository) PushContext(ctx context.Context, o *PushOptions) error {
 	}
 
 	return remote.PushContext(ctx, o)
+}
+
+// ArchiveOptions stores the options for the Archive operation.
+type ArchiveOptions struct {
+	// Format is the archive format (tar, tar.gz, tgz, zip).
+	// Defaults to tar.
+	Format string
+	// Prefix is an optional prefix to prepend to each pathname.
+	Prefix string
+	// Treeish is the tree-ish object to archive (commit, tag, or tree).
+	Treeish string
+	// Paths is an optional list of paths to include in the archive.
+	// If empty, all paths are included.
+	Paths []string
+	// ClientOptions are options for the transport client (used by ArchiveRemote).
+	ClientOptions []client.Option
+	// Progress receives human-readable status from the remote server.
+	// Only used by ArchiveRemote, ignored by Archive.
+	Progress sideband.Progress
+}
+
+// Validate validates the ArchiveOptions.
+func (o *ArchiveOptions) Validate() error {
+	if o.Treeish == "" {
+		return errors.New("tree-ish is required")
+	}
+	return nil
+}
+
+// Archive creates an archive from the local repository.
+// It returns an io.ReadCloser that yields the archive data.
+// The caller must close the returned ReadCloser.
+func (r *Repository) Archive(o *ArchiveOptions) (io.ReadCloser, error) {
+	return r.ArchiveContext(context.Background(), o)
+}
+
+// ArchiveContext creates an archive from the local repository.
+// The provided Context can be used to cancel the operation.
+func (r *Repository) ArchiveContext(ctx context.Context, o *ArchiveOptions) (io.ReadCloser, error) {
+	if err := o.Validate(); err != nil {
+		return nil, err
+	}
+
+	pr, pw := io.Pipe()
+	go func() {
+		var args []string
+		if o.Format != "" {
+			args = append(args, "--format="+o.Format)
+		}
+		if o.Prefix != "" {
+			args = append(args, "--prefix="+o.Prefix)
+		}
+		args = append(args, o.Treeish)
+		if len(o.Paths) > 0 {
+			args = append(args, o.Paths...)
+		}
+
+		// Wrap pipe writer with context-aware writer
+		cw := ioutil.NewContextWriter(ctx, pw)
+		err := archive.WriteArchive(r.Storer, cw, true, args...)
+		_ = pw.CloseWithError(err)
+	}()
+
+	return pr, nil
+}
+
+// ArchiveRemote creates an archive from a remote repository.
+// It returns an io.ReadCloser that yields the archive data.
+// The caller must close the returned ReadCloser.
+func ArchiveRemote(url string, o *ArchiveOptions) (io.ReadCloser, error) {
+	return ArchiveRemoteContext(context.Background(), url, o)
+}
+
+// ArchiveRemoteContext creates an archive from a remote repository.
+// The provided Context can be used to cancel the operation.
+func ArchiveRemoteContext(ctx context.Context, url string, o *ArchiveOptions) (io.ReadCloser, error) {
+	if err := o.Validate(); err != nil {
+		return nil, err
+	}
+	if url == "" {
+		return nil, errors.New("remote URL is required")
+	}
+
+	cl, req, err := newClient(url, o.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Command = transport.UploadArchiveService
+	sess, err := cl.Handshake(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if session implements Archiver
+	arch, ok := sess.(transport.Archiver)
+	if !ok {
+		return nil, transport.ErrArchiveUnsupported
+	}
+
+	// Build arguments
+	var args []string
+	if o.Format != "" {
+		args = append(args, "--format="+o.Format)
+	}
+	if o.Prefix != "" {
+		args = append(args, "--prefix="+o.Prefix)
+	}
+	args = append(args, o.Treeish)
+	if len(o.Paths) > 0 {
+		args = append(args, o.Paths...)
+	}
+
+	return arch.Archive(ctx, &transport.ArchiveRequest{
+		Args:     args,
+		Progress: o.Progress,
+	})
 }
 
 // Log returns the commit history from the given LogOptions.
